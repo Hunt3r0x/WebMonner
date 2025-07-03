@@ -1,0 +1,8 @@
+{
+  "targetUrl": "https://example.com",
+  "auth": {
+    "loginUrl": "https://example.com",
+    "email": "email@email.com",
+    "password": "password"
+  }
+} 

@@ -1,0 +1,17 @@
+{
+  "name": "webmonner",
+  "version": "1.0.0",
+  "description": "Monitor loaded JS files, detect changes, beautify & organize",
+  "main": "cli.js",
+  "type": "module",
+  "scripts": {
+    "start": "node cli.js"
+  },
+  "dependencies": {
+    "chalk": "^5.4.1",
+    "commander": "^11.0.0",
+    "diff": "^5.1.0",
+    "js-beautify": "^1.15.0",
+    "puppeteer": "^21.3.8"
+  }
+}
