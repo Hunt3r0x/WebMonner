@@ -2,7 +2,7 @@ import puppeteer from 'puppeteer';
 import fs from 'fs';
 import { loginAndGetToken } from './auth.js';
 import { saveJSFile, generateChangeReport, generateNewCodeSummary } from './fileManager.js';
-import { log, summary, ProgressBar, formatUrl, formatFileSize, formatTime, formatDuration } from './utils.js';
+import { log, summary, ProgressBar, formatUrl, formatFileSize, formatTime, formatDuration, showErrors } from './utils.js';
 import crypto from 'crypto';
 
 // Pattern matching function for domain/URL filters
@@ -102,7 +102,7 @@ function handleNetworkError(error, url) {
 }
 
 export default async function runCrawler(options) {
-  const { urls, authEnabled, customHeaders, liveMode, filters, quiet, showCodePreview, maxLines, discordNotifier } = options;
+  const { urls, authEnabled, customHeaders, liveMode, filters, quiet, verbose, showCodePreview, maxLines, discordNotifier } = options;
   
   let browser;
   let progressBar;
@@ -111,12 +111,12 @@ export default async function runCrawler(options) {
   try {
     const config = JSON.parse(fs.readFileSync('config.json', 'utf-8'));
     
-    log.header('Starting Web Crawler');
+    log.header('JavaScript Security Scan');
     log.info(`Processing ${urls.length} URL(s)`);
     log.separator();
     
     // Initialize progress bar
-    progressBar = new ProgressBar(urls.length, 'Crawling URLs');
+    progressBar = new ProgressBar(urls.length, 'Scanning');
     
     browser = await puppeteer.launch({
       headless: 'new',
@@ -147,7 +147,7 @@ export default async function runCrawler(options) {
       const url = urls[i];
       
       // Update progress at start of URL processing
-      progressBar.update(i, `Processing ${formatUrl(url)}`);
+      progressBar.update(i, `${formatUrl(url)}`);
       
       let page;
       let urlSuccess = false;
@@ -203,6 +203,15 @@ export default async function runCrawler(options) {
           newCodeSections: 0
         };
 
+        // Collect status messages to display cleanly later
+        const statusMessages = {
+          new: [],
+          changed: [],
+          unchanged: [],
+          filtered: [],
+          errors: []
+        };
+
         // Enhanced JavaScript detection patterns
         const jsPatterns = [
           /\.js$/i,
@@ -250,6 +259,7 @@ export default async function runCrawler(options) {
                 filteredFiles.add(respUrl);
                 urlResults.filtered++;
                 results.filteredFiles++;
+                statusMessages.filtered.push(respUrl);
                 return;
               }
               
@@ -280,7 +290,7 @@ export default async function runCrawler(options) {
                   if (isNewFile) {
                     urlResults.new++;
                     results.newFiles++;
-                    log.status('NEW', formatUrl(respUrl));
+                    statusMessages.new.push(respUrl);
                     
                     // Send Discord notification for new file
                     if (discordNotifier && discordNotifier.enabled) {
@@ -294,7 +304,7 @@ export default async function runCrawler(options) {
                   } else {
                     urlResults.changed++;
                     results.changedFiles++;
-                    log.status('CHANGED', formatUrl(respUrl));
+                    statusMessages.changed.push(respUrl);
                   }
                   
                   // Save file with diff analysis and new code preview
@@ -332,11 +342,11 @@ export default async function runCrawler(options) {
                   fs.writeFileSync(hashPath, JSON.stringify(hashes, null, 2));
                 } else {
                   urlResults.unchanged++;
-                  if (!quiet) log.status('UNCHANGED', formatUrl(respUrl));
+                  statusMessages.unchanged.push(respUrl);
                 }
               } catch (fileError) {
                 const errorMsg = `File processing error: ${fileError.message}`;
-                log.status('ERROR', `${formatUrl(respUrl)} - ${errorMsg}`);
+                statusMessages.errors.push({ url: respUrl, message: errorMsg });
                 results.errors++;
                 results.errorDetails.push({ url: respUrl, type: 'FILE_ERROR', message: errorMsg });
                 
@@ -368,7 +378,7 @@ export default async function runCrawler(options) {
           urlSuccess = true;
         } catch (gotoError) {
           const errorInfo = handleNetworkError(gotoError, url);
-          log.status('ERROR', `${formatUrl(url)} - ${errorInfo.message}`);
+          statusMessages.errors.push({ url: url, message: errorInfo.message });
           results.errorDetails.push({ url, type: errorInfo.type, message: errorInfo.message });
           
           if (!errorInfo.recoverable) {
@@ -400,26 +410,72 @@ export default async function runCrawler(options) {
           results.urlsProcessed++;
           
           // Final progress update for this URL
-          progressBar.update(i + 1, `Completed ${formatUrl(url)} (${urlResults.processed} files)`);
+          progressBar.update(i + 1, `${formatUrl(url)} (${urlResults.processed} files)`);
           
-          // Show URL results if not quiet
+          // Show organized URL results if not quiet
           if (!quiet && urlResults.found > 0) {
             log.separator();
-            log.info(`Results for ${formatUrl(url)}`);
-            log.muted(`Found: ${urlResults.found} | Processed: ${urlResults.processed} | Filtered: ${urlResults.filtered}`);
-            log.muted(`New: ${urlResults.new} | Changed: ${urlResults.changed} | Unchanged: ${urlResults.unchanged}`);
+            log.info(`Analysis: ${formatUrl(url)}`);
+            log.muted(`${urlResults.found} files found, ${urlResults.processed} analyzed, ${urlResults.filtered} filtered`);
+            log.muted(`${urlResults.new} new, ${urlResults.changed} modified, ${urlResults.unchanged} unchanged`);
             if (urlResults.newCodeSections > 0) {
-              log.muted(`New code sections: ${urlResults.newCodeSections}`);
+              log.muted(`${urlResults.newCodeSections} code changes detected`);
+            }
+            
+            // Show organized status messages
+            if (statusMessages.new.length > 0) {
+              log.separator();
+              log.muted('New Files:');
+              statusMessages.new.forEach(url => log.status('NEW', formatUrl(url)));
+            }
+            
+            if (statusMessages.changed.length > 0) {
+              log.separator();
+              log.muted('Modified Files:');
+              statusMessages.changed.forEach(url => log.status('CHANGED', formatUrl(url)));
+            }
+            
+            if (statusMessages.unchanged.length > 0) {
+              if (verbose || statusMessages.unchanged.length <= 5) {
+                log.separator();
+                log.muted('Unchanged Files:');
+                statusMessages.unchanged.forEach(url => log.status('UNCHANGED', formatUrl(url)));
+              } else {
+                log.separator();
+                log.muted(`${statusMessages.unchanged.length} files unchanged (use --verbose to see all)`);
+              }
+            }
+            
+            if (statusMessages.filtered.length > 0) {
+              log.separator();
+              log.muted(`${statusMessages.filtered.length} files filtered`);
+            }
+            
+            if (statusMessages.errors.length > 0) {
+              log.separator();
+              log.muted('Processing Errors:');
+              statusMessages.errors.forEach(error => {
+                log.status('ERROR', `${formatUrl(error.url)} - ${error.message}`);
+              });
             }
           }
         } else {
           results.urlsFailed++;
-          progressBar.update(i + 1, `Failed ${formatUrl(url)}`);
+          progressBar.update(i + 1, `Failed: ${formatUrl(url)}`);
+          
+          // Show error messages for failed URLs
+          if (!quiet && statusMessages.errors.length > 0) {
+            log.separator();
+            log.muted(`Failed to process ${formatUrl(url)}:`);
+            statusMessages.errors.forEach(error => {
+              log.status('ERROR', `${formatUrl(error.url)} - ${error.message}`);
+            });
+          }
         }
 
       } catch (pageError) {
         const errorInfo = handleNetworkError(pageError, url);
-        log.error(`Error processing ${formatUrl(url)}: ${errorInfo.message}`);
+        statusMessages.errors.push({ url: url, message: errorInfo.message });
         results.errors++;
         results.urlsFailed++;
         results.errorDetails.push({ url, type: errorInfo.type, message: errorInfo.message });
@@ -443,7 +499,7 @@ export default async function runCrawler(options) {
     }
 
     // Final progress update
-    progressBar.update(urls.length, `All URLs processed`);
+    progressBar.update(urls.length, `Analysis complete`);
     
     // Small delay to show completed progress
     await new Promise(resolve => setTimeout(resolve, 500));
@@ -457,17 +513,18 @@ export default async function runCrawler(options) {
     const summaryData = {
       'URLs Processed': results.urlsProcessed,
       'URLs Failed': results.urlsFailed,
-      'JS Files Found': results.totalFiles + results.filteredFiles,
-      'Files Processed': results.totalFiles,
+      'Total Files': results.totalFiles + results.filteredFiles,
+      'Files Analyzed': results.totalFiles,
       'Files Filtered': results.filteredFiles,
       'New Files': results.newFiles,
-      'Changed Files': results.changedFiles,
-      'New Code Sections': results.newCodeSections,
+      'Modified Files': results.changedFiles,
+      'Code Changes': results.newCodeSections,
       'Errors': results.errors,
-      'Scan Time': formatTime()
+      'Duration': formatDuration(scanDuration),
+      'Completed': formatTime()
     };
 
-    summary.create('Scan Complete', summaryData);
+    summary.create('Scan Results', summaryData);
 
     // Send Discord notification for scan completion
     if (discordNotifier && discordNotifier.enabled) {
@@ -486,30 +543,13 @@ export default async function runCrawler(options) {
 
     // Show error summary if there were errors
     if (results.errorDetails.length > 0 && !quiet) {
-      log.separator();
-      log.header('Error Summary');
-      const errorTypes = {};
-      results.errorDetails.forEach(error => {
-        errorTypes[error.type] = (errorTypes[error.type] || 0) + 1;
-      });
-      
-      Object.entries(errorTypes).forEach(([type, count]) => {
-        log.muted(`${type}: ${count} occurrences`);
-      });
-      
-      if (results.errorDetails.length <= 5) {
-        log.separator();
-        results.errorDetails.forEach(error => {
-          log.muted(`${formatUrl(error.url)}: ${error.message}`);
-        });
-      }
-      log.footer();
+      showErrors(results.errorDetails);
     }
 
     // Generate new code summary for each domain if there were changes
     if (results.newCodeSections > 0 && !quiet) {
       log.separator();
-      log.info('Generating new code summaries...');
+      log.info('Generating code analysis reports...');
       
       const domains = new Set();
       urls.forEach(url => domains.add(new URL(url).hostname));
@@ -517,7 +557,7 @@ export default async function runCrawler(options) {
       for (const domain of domains) {
         const summaryPath = generateNewCodeSummary(domain);
         if (summaryPath) {
-          log.muted(`Summary generated: ${summaryPath}`);
+          log.muted(`Report: ${summaryPath}`);
         }
       }
     }
