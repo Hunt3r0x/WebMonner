@@ -1,7 +1,45 @@
 import chalk from 'chalk';
 
-// Professional enterprise color scheme
-const colors = {
+// Check terminal capabilities
+const hasColorSupport = () => {
+  // Check if colors are explicitly disabled
+  if (process.env.NO_COLOR || process.env.TERM === 'dumb') {
+    return false;
+  }
+  
+  // Check for --no-color flag
+  if (process.argv.includes('--no-color')) {
+    return false;
+  }
+  
+  // Check if running in limited color environments
+  const term = process.env.TERM || '';
+  const colorterm = process.env.COLORTERM || '';
+  
+  // Modern terminals with full color support
+  if (colorterm === 'truecolor' || colorterm === '24bit') {
+    return 'full';
+  }
+  
+  // Check for tmux/screen - use basic colors
+  if (term.includes('tmux') || term.includes('screen')) {
+    return 'basic';
+  }
+  
+  // Check for common color-capable terminals
+  if (term.includes('color') || term.includes('ansi') || term.includes('xterm')) {
+    return 'basic';
+  }
+  
+  // Default to basic if we can't determine
+  return 'basic';
+};
+
+const colorSupport = hasColorSupport();
+
+// Professional enterprise color scheme with fallbacks
+const colors = colorSupport === 'full' ? {
+  // Full color support (hex colors)
   primary: chalk.hex('#2563eb'),      // Professional blue
   success: chalk.hex('#059669'),      // Clean green
   warning: chalk.hex('#d97706'),      // Amber warning
@@ -11,6 +49,42 @@ const colors = {
   accent: chalk.hex('#7c3aed'),       // Purple accent
   dim: chalk.hex('#9ca3af'),          // Lighter gray
   bright: chalk.white.bold
+} : colorSupport === 'basic' ? {
+  // Basic color support (ANSI colors)
+  primary: chalk.blue,
+  success: chalk.green,
+  warning: chalk.yellow,
+  error: chalk.red,
+  info: chalk.cyan,
+  muted: chalk.gray,
+  accent: chalk.magenta,
+  dim: chalk.dim,
+  bright: chalk.white.bold
+} : {
+  // No color support (plain text)
+  primary: chalk.reset,
+  success: chalk.reset,
+  warning: chalk.reset,
+  error: chalk.reset,
+  info: chalk.reset,
+  muted: chalk.reset,
+  accent: chalk.reset,
+  dim: chalk.reset,
+  bright: chalk.reset
+};
+
+// Export color support info
+export const getColorSupport = () => colorSupport;
+
+// Show color support info for debugging
+export const showColorSupport = () => {
+  if (colorSupport === 'full') {
+    console.log('Color support: Full (24-bit colors)');
+  } else if (colorSupport === 'basic') {
+    console.log('Color support: Basic (ANSI colors)');
+  } else {
+    console.log('Color support: Disabled (plain text)');
+  }
 };
 
 // Professional logging system
@@ -108,12 +182,16 @@ export class ProgressBar {
     this.lastUpdate = now;
     const percentage = Math.round((this.current / this.total) * 100);
     
-    // Clean progress bar
+    // Clean progress bar with compatibility
     const barWidth = 20;
     const filled = Math.round((percentage / 100) * barWidth);
     const empty = barWidth - filled;
     
-    const bar = colors.primary('█'.repeat(filled)) + colors.dim('░'.repeat(empty));
+    // Use different characters based on color support
+    const filledChar = colorSupport === false ? '=' : '█';
+    const emptyChar = colorSupport === false ? '-' : '░';
+    
+    const bar = colors.primary(filledChar.repeat(filled)) + colors.dim(emptyChar.repeat(empty));
     const percent = colors.accent(`${percentage}%`.padStart(4));
     
     // Clear line and show progress
@@ -213,7 +291,7 @@ export const formatUrl = (url) => {
     const urlObj = new URL(url);
 
     const protocol = colors.dim(urlObj.protocol + '//');
-    const domain = colors.highlight(urlObj.hostname);
+    const domain = colors.bright(urlObj.hostname);
     const port = urlObj.port ? ':' + urlObj.port : '';
     const path = colors.muted(urlObj.pathname || '/');
     const query = urlObj.search ? colors.info(urlObj.search) : '';

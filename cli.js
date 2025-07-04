@@ -3,7 +3,7 @@
 import { program } from 'commander';
 import fs from 'fs';
 import runCrawler from './crawler.js';
-import { showBanner, log, summary, SleepTimer } from './utils.js';
+import { showBanner, log, summary, SleepTimer, showColorSupport, getColorSupport } from './utils.js';
 import { DiscordNotifier } from './notifications.js';
 import { cleanupAllOldDiffs, getDomainDiskUsage } from './fileManager.js';
 
@@ -23,6 +23,8 @@ program
   .option('--exclude-url <pattern>', 'Exclude JS files matching this URL pattern')
   .option('--quiet', 'Reduce output verbosity')
   .option('--verbose', 'Show all file statuses including unchanged files')
+  .option('--no-color', 'Disable colored output (for compatibility)')
+  .option('--debug-colors', 'Show color support information and exit')
   .option('--no-code-preview', 'Disable showing new code sections in output')
   .option('--max-lines <number>', 'Maximum lines to show per code section (default: 10)', '10')
   .option('--discord-webhook <url>', 'Discord webhook URL for notifications')
@@ -37,6 +39,30 @@ const opts = program.opts();
 
 // Initialize Discord notifier
 const discordNotifier = new DiscordNotifier(opts.discordWebhook);
+
+// Handle debug colors command
+if (opts.debugColors) {
+  console.log('Terminal Color Support Debug Information:');
+  console.log('========================================');
+  console.log(`TERM: ${process.env.TERM || 'not set'}`);
+  console.log(`COLORTERM: ${process.env.COLORTERM || 'not set'}`);
+  console.log(`NO_COLOR: ${process.env.NO_COLOR || 'not set'}`);
+  console.log(`--no-color flag: ${opts.noColor ? 'yes' : 'no'}`);
+  console.log(`tmux/screen: ${process.env.TERM && (process.env.TERM.includes('tmux') || process.env.TERM.includes('screen')) ? 'yes' : 'no'}`);
+  console.log('');
+  showColorSupport();
+  console.log('');
+  console.log('Test colors:');
+  const colorSupport = getColorSupport();
+  if (colorSupport === 'full') {
+    console.log('[FULL] Full color support detected');
+  } else if (colorSupport === 'basic') {
+    console.log('[BASIC] Basic color support detected');
+  } else {
+    console.log('[NONE] No color support detected');
+  }
+  process.exit(0);
+}
 
 // Handle cleanup command
 if (opts.cleanupDiffs) {
