@@ -376,18 +376,20 @@ export default async function runCrawler(options) {
           }
         }
 
+        const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
         // Only continue if navigation was successful
         if (urlSuccess) {
           // Wait for dynamic content
           try {
-            await page.waitForTimeout(3000);
+            await sleep(3000);
 
             // Scroll to trigger lazy loading
             await page.evaluate(() => {
               window.scrollTo(0, document.body.scrollHeight);
             });
             
-            await page.waitForTimeout(2000);
+            await sleep(2000);
           } catch (dynamicError) {
             // Continue even if dynamic content loading fails
             if (!quiet) {
