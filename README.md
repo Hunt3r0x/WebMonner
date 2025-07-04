@@ -13,7 +13,7 @@ git clone <repository-url>
 cd webmonner
 npm install
 ```
-
+<!-- 
 ## Configuration
 
 Create `config.json` for authentication settings:
@@ -27,7 +27,7 @@ Create `config.json` for authentication settings:
     "password": "your-password"
   }
 }
-```
+``` -->
 
 ## Usage
 
