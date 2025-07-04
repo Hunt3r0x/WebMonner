@@ -1,114 +1,94 @@
 import chalk from 'chalk';
 
-// Professional color scheme
+// Professional enterprise color scheme
 const colors = {
-  primary: chalk.cyan,
-  success: chalk.green,
-  warning: chalk.yellow,
-  error: chalk.red,
-  info: chalk.blue,
-  muted: chalk.gray,
-  highlight: chalk.magenta,
-  dim: chalk.dim
+  primary: chalk.hex('#2563eb'),      // Professional blue
+  success: chalk.hex('#059669'),      // Clean green
+  warning: chalk.hex('#d97706'),      // Amber warning
+  error: chalk.hex('#dc2626'),        // Clean red
+  info: chalk.hex('#0891b2'),         // Cyan info
+  muted: chalk.hex('#6b7280'),        // Gray muted
+  accent: chalk.hex('#7c3aed'),       // Purple accent
+  dim: chalk.hex('#9ca3af'),          // Lighter gray
+  bright: chalk.white.bold
 };
 
-// Clean logging functions
+// Professional logging system
 export const log = {
-  // Header with clean formatting
+  // Clean header
   header: (text) => {
-    console.log(colors.primary.bold(`\n╭─ ${text}`));
-    console.log(colors.primary(`│`));
+    console.log(colors.primary(`\n▎${text}`));
   },
 
   // Success message
   success: (text) => {
-    console.log(colors.success(`│ ✓ ${text}`));
+    console.log(colors.success(`  [OK] ${text}`));
   },
 
   // Error message
   error: (text) => {
-    console.log(colors.error(`│ ✗ ${text}`));
+    console.log(colors.error(`  [ERROR] ${text}`));
   },
 
   // Info message
   info: (text) => {
-    console.log(colors.info(`│ ℹ ${text}`));
+    console.log(colors.info(`  [INFO] ${text}`));
   },
 
   // Warning message
   warning: (text) => {
-    console.log(colors.warning(`│ ⚠ ${text}`));
+    console.log(colors.warning(`  [WARN] ${text}`));
   },
 
-  // Muted/secondary info
+  // Muted text
   muted: (text) => {
-    console.log(colors.muted(`│ ${text}`));
+    console.log(colors.muted(`    ${text}`));
   },
 
-  // Progress indicator
-  progress: (current, total, text) => {
-    const percentage = Math.round((current / total) * 100);
-    const bar = '█'.repeat(Math.floor(percentage / 5)) + '░'.repeat(20 - Math.floor(percentage / 5));
-    console.log(colors.info(`│ [${bar}] ${percentage}% ${text}`));
-  },
-
-  // Status with clean formatting
+  // Status with professional formatting
   status: (status, text) => {
-    const statusColors = {
-      'NEW': colors.success,
-      'CHANGED': colors.warning,
-      'UNCHANGED': colors.muted,
-      'FILTERED': colors.dim,
-      'ERROR': colors.error
+    const statusMap = {
+      'NEW': { color: colors.success, prefix: '[NEW]' },
+      'CHANGED': { color: colors.warning, prefix: '[MOD]' },
+      'UNCHANGED': { color: colors.muted, prefix: '[---]' },
+      'FILTERED': { color: colors.dim, prefix: '[SKP]' },
+      'ERROR': { color: colors.error, prefix: '[ERR]' }
     };
-    const statusColor = statusColors[status] || colors.info;
-    console.log(statusColor(`│ ${status.padEnd(9)} ${text}`));
+    
+    const statusStyle = statusMap[status] || { color: colors.info, prefix: '[---]' };
+    console.log(`    ${statusStyle.color(statusStyle.prefix)} ${text}`);
   },
 
-  // Footer
-  footer: () => {
-    console.log(colors.primary(`╰─────────────────────────────────────────────────────────────────────────`));
-  },
-
-  // Separator
+  // Clean separator
   separator: () => {
-    console.log(colors.muted(`│`));
+    console.log('');
   },
 
-  // Clean table header
-  tableHeader: (headers) => {
-    console.log(colors.primary(`│ ${headers.join(' │ ')}`));
-    console.log(colors.primary(`│ ${headers.map(h => '─'.repeat(h.length)).join('─┼─')}`));
-  },
-
-  // Clean table row
-  tableRow: (cells) => {
-    console.log(colors.muted(`│ ${cells.join(' │ ')}`));
+  // Minimal progress indicator
+  progress: (text) => {
+    console.log(colors.info(`  [INFO] ${text}`));
   }
 };
 
-// Summary formatting
+// Professional summary box
 export const summary = {
   create: (title, data) => {
-    log.header(title);
-    log.separator();
+    console.log(colors.primary(`\n▎${title}`));
+    console.log(colors.muted('  ─'.repeat(40)));
     
     Object.entries(data).forEach(([key, value]) => {
-      const formattedKey = key.padEnd(20);
-      if (typeof value === 'number') {
-        log.muted(`${formattedKey} ${colors.highlight(value)}`);
-      } else {
-        log.muted(`${formattedKey} ${value}`);
-      }
+      const keyFormatted = key.padEnd(20);
+      const valueFormatted = typeof value === 'number' ? colors.accent(value.toLocaleString()) : colors.bright(value);
+      console.log(colors.muted(`  ${keyFormatted} ${valueFormatted}`));
     });
     
-    log.footer();
+    console.log('');
   }
 };
 
-// Progress bar for operations
+// Modern progress bar
 export class ProgressBar {
-  constructor(total, label = 'Progress') {
+  constructor(total, label = 'Processing') {
     this.total = total;
     this.current = 0;
     this.label = label;
@@ -120,33 +100,41 @@ export class ProgressBar {
     this.current = current;
     const now = Date.now();
     
-    // Only update every 500ms or on completion to avoid spam
-    if (now - this.lastUpdate < 500 && current < this.total) {
+    // Throttle updates for performance
+    if (now - this.lastUpdate < 300 && current < this.total) {
       return;
     }
     
     this.lastUpdate = now;
     const percentage = Math.round((this.current / this.total) * 100);
     
-    // Create progress bar
-    const barLength = 20;
-    const filledLength = Math.round((percentage / 100) * barLength);
-    const bar = '█'.repeat(filledLength) + '░'.repeat(barLength - filledLength);
+    // Clean progress bar
+    const barWidth = 20;
+    const filled = Math.round((percentage / 100) * barWidth);
+    const empty = barWidth - filled;
     
-    // Clean progress display without timing
+    const bar = colors.primary('█'.repeat(filled)) + colors.dim('░'.repeat(empty));
+    const percent = colors.accent(`${percentage}%`.padStart(4));
+    
+    // Clear line and show progress
     process.stdout.write('\r');
-    const progressText = `│ [${colors.info(bar)}] ${colors.highlight(percentage + '%')} ${this.label} ${text}`;
-    console.log(progressText);
+    const progressLine = `  ${bar} ${percent} ${colors.muted(this.label)} ${colors.bright(text)}`;
+    process.stdout.write(progressLine);
+    
+    // Add newline if complete
+    if (current >= this.total) {
+      console.log('');
+    }
   }
 
   finish(text = 'Complete') {
     const elapsed = Math.round((Date.now() - this.startTime) / 1000);
-    const elapsedStr = formatDuration(elapsed);
-    log.success(`${this.label} ${text} in ${elapsedStr}`);
+    const duration = formatDuration(elapsed);
+    log.success(`${this.label} ${text} (${duration})`);
   }
 }
 
-// Sleep timer for live monitoring intervals
+// Professional countdown timer
 export class SleepTimer {
   constructor(durationSeconds, label = 'Next scan') {
     this.duration = durationSeconds;
@@ -159,7 +147,6 @@ export class SleepTimer {
     return new Promise((resolve) => {
       let remaining = this.duration;
       
-      // Initial display
       this.displayCountdown(remaining);
       
       this.interval = setInterval(() => {
@@ -167,9 +154,8 @@ export class SleepTimer {
         
         if (remaining <= 0) {
           clearInterval(this.interval);
-          // Clear the countdown line and show completion
           process.stdout.write('\r');
-          console.log(colors.success(`│ ✓ ${this.label} starting now`));
+          log.success(`${this.label} starting`);
           resolve();
         } else {
           this.displayCountdown(remaining);
@@ -179,23 +165,19 @@ export class SleepTimer {
   }
 
   displayCountdown(remaining) {
-    const totalSeconds = this.duration;
-    const elapsed = totalSeconds - remaining;
-    const percentage = Math.round((elapsed / totalSeconds) * 100);
+    const minutes = Math.floor(remaining / 60);
+    const seconds = remaining % 60;
+    const timeStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
     
-    // Create progress bar
-    const barLength = 20;
-    const filledLength = Math.round((percentage / 100) * barLength);
-    const bar = '█'.repeat(filledLength) + '░'.repeat(barLength - filledLength);
+    const nextScanTime = new Date(Date.now() + (remaining * 1000)).toLocaleTimeString('en-US', {
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit'
+    });
     
-    // Format remaining time
-    const remainingStr = formatDuration(remaining);
-    const nextScanTime = new Date(Date.now() + (remaining * 1000)).toLocaleTimeString();
-    
-    // Clear line and update
     process.stdout.write('\r');
-    const countdownText = `│ [${colors.warning(bar)}] ${colors.highlight(percentage + '%')} ${this.label} in ${colors.highlight(remainingStr)} | Next scan at ${colors.dim(nextScanTime)}`;
-    process.stdout.write(countdownText);
+    const countdownLine = `  ${colors.warning('[WAIT]')} ${colors.bright(timeStr)} ${colors.muted(this.label)} ${colors.dim(`(at ${nextScanTime})`)}`;
+    process.stdout.write(countdownLine);
   }
 
   stop() {
@@ -206,61 +188,111 @@ export class SleepTimer {
   }
 }
 
-// Format duration in seconds to human readable format
+// Clean time formatting
 export function formatDuration(seconds) {
   if (seconds < 60) {
     return `${seconds}s`;
   } else if (seconds < 3600) {
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = seconds % 60;
-    return `${minutes}m ${remainingSeconds}s`;
+    return `${minutes}m${remainingSeconds > 0 ? ` ${remainingSeconds}s` : ''}`;
   } else {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
-    return `${hours}h ${minutes}m`;
+    return `${hours}h${minutes > 0 ? ` ${minutes}m` : ''}`;
   }
 }
 
-// Clean URL formatting
+// Professional URL formatting
 export const formatUrl = (url) => {
   try {
+    if (!url.startsWith('http')) {
+      return colors.muted(url);
+    }
+
     const urlObj = new URL(url);
-    const domain = colors.highlight(urlObj.hostname);
-    const path = colors.muted(urlObj.pathname);
-    return `${domain}${path}`;
+    const domain = colors.bright(urlObj.hostname);
+    const path = urlObj.pathname === '/' ? '' : colors.muted(urlObj.pathname);
+    const query = urlObj.search ? colors.dim(urlObj.search) : '';
+
+    return `${domain}${path}${query}`;
   } catch {
     return colors.muted(url);
   }
 };
 
-// File size formatting
+// Clean file size formatting
 export const formatFileSize = (bytes) => {
   if (bytes === 0) return '0 B';
   const k = 1024;
   const sizes = ['B', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+  const size = parseFloat((bytes / Math.pow(k, i)).toFixed(1));
+  return `${size} ${sizes[i]}`;
 };
 
-// Time formatting
+// Professional time formatting
 export const formatTime = (date = new Date()) => {
-  return colors.muted(date.toLocaleTimeString());
+  return date.toLocaleTimeString('en-US', {
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  });
 };
 
-// Clean startup banner
+// Clean enterprise banner
 export const showBanner = () => {
   console.clear();
-  console.log(colors.primary.bold('╭─────────────────────────────────────────────────────────────────────────'));
-  console.log(colors.primary.bold('│'));
-  console.log(colors.primary.bold('│  ██╗    ██╗███████╗██████╗ ███╗   ███╗ ██████╗ ███╗   ██╗███╗   ██╗███████╗██████╗ '));
-  console.log(colors.primary.bold('│  ██║    ██║██╔════╝██╔══██╗████╗ ████║██╔═══██╗████╗  ██║████╗  ██║██╔════╝██╔══██╗'));
-  console.log(colors.primary.bold('│  ██║ █╗ ██║█████╗  ██████╔╝██╔████╔██║██║   ██║██╔██╗ ██║██╔██╗ ██║█████╗  ██████╔╝'));
-  console.log(colors.primary.bold('│  ██║███╗██║██╔══╝  ██╔══██╗██║╚██╔╝██║██║   ██║██║╚██╗██║██║╚██╗██║██╔══╝  ██╔══██╗'));
-  console.log(colors.primary.bold('│  ╚███╔███╔╝███████╗██████╔╝██║ ╚═╝ ██║╚██████╔╝██║ ╚████║██║ ╚████║███████╗██║  ██║'));
-  console.log(colors.primary.bold('│   ╚══╝╚══╝ ╚══════╝╚═════╝ ╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═══╝╚═╝  ╚═══╝╚══════╝╚═╝  ╚═╝'));
-  console.log(colors.primary.bold('│'));
-  console.log(colors.primary.bold('│  Professional JavaScript Monitoring Tool'));
-  console.log(colors.primary.bold('│'));
-  console.log(colors.primary.bold('╰─────────────────────────────────────────────────────────────────────────'));
+  console.log(colors.primary.bold('\n  ██╗    ██╗███████╗██████╗ ███╗   ███╗ ██████╗ ███╗   ██╗███╗   ██╗███████╗██████╗'));
+  console.log(colors.primary.bold('  ██║    ██║██╔════╝██╔══██╗████╗ ████║██╔═══██╗████╗  ██║████╗  ██║██╔════╝██╔══██╗'));
+  console.log(colors.primary.bold('  ██║ █╗ ██║█████╗  ██████╔╝██╔████╔██║██║   ██║██╔██╗ ██║██╔██╗ ██║█████╗  ██████╔╝'));
+  console.log(colors.primary.bold('  ██║███╗██║██╔══╝  ██╔══██╗██║╚██╔╝██║██║   ██║██║╚██╗██║██║╚██╗██║██╔══╝  ██╔══██╗'));
+  console.log(colors.primary.bold('  ╚███╔███╔╝███████╗██████╔╝██║ ╚═╝ ██║╚██████╔╝██║ ╚████║██║ ╚████║███████╗██║  ██║'));
+  console.log(colors.primary.bold('   ╚══╝╚══╝ ╚══════╝╚═════╝ ╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═══╝╚═╝  ╚═══╝╚══════╝╚═╝  ╚═╝'));
+  console.log(colors.muted('\n  Enterprise JavaScript Security Monitoring Platform'));
+  console.log(colors.dim('  Real-time code change detection and analysis\n'));
+};
+
+// Enterprise metrics display
+export const showMetrics = (metrics) => {
+  if (!metrics || Object.keys(metrics).length === 0) return;
+  
+  console.log(colors.primary('\n▎Performance Metrics'));
+  console.log(colors.muted('  ─'.repeat(40)));
+  
+  Object.entries(metrics).forEach(([key, value]) => {
+    const keyFormatted = key.padEnd(20);
+    const valueFormatted = colors.accent(value);
+    console.log(colors.muted(`  ${keyFormatted} ${valueFormatted}`));
+  });
+  
+  console.log('');
+};
+
+// Professional error display
+export const showErrors = (errors) => {
+  if (!errors || errors.length === 0) return;
+  
+  console.log(colors.error('\n▎Error Summary'));
+  console.log(colors.muted('  ─'.repeat(40)));
+  
+  const errorTypes = {};
+  errors.forEach(error => {
+    errorTypes[error.type] = (errorTypes[error.type] || 0) + 1;
+  });
+  
+  Object.entries(errorTypes).forEach(([type, count]) => {
+    console.log(colors.muted(`  ${type.padEnd(20)} ${colors.error(count)}`));
+  });
+  
+  if (errors.length <= 5) {
+    console.log('');
+    errors.forEach(error => {
+      console.log(colors.muted(`    [ERR] ${formatUrl(error.url)}`));
+      console.log(colors.dim(`      ${error.message}`));
+    });
+  }
+  
   console.log('');
 }; 
