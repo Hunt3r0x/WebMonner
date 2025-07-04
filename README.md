@@ -1,37 +1,22 @@
-# 🕷️ webmonner
+# WebMonner
 
-A powerful web monitoring tool that tracks JavaScript files loaded on websites, detects changes with **100% accuracy**, provides **live monitoring**, supports **domain filtering**, **multi-URL monitoring**, and shows **actual new code sections**.
+JavaScript security monitoring platform for enterprise environments. Tracks JavaScript files across web applications, detects code changes, and provides detailed analysis for security teams.
 
-## 🚀 Features
+## Overview
 
-- **🔴 Live Monitoring**: Continuous monitoring that runs automatically at specified intervals
-- **🎯 100% Accurate Detection**: Enhanced JavaScript file detection with multiple patterns
-- **📊 Detailed Diff Analysis**: Line-by-line comparison with comprehensive change reports
-- **🔍 New Code Preview**: See actual new/changed JavaScript code in both original and beautified formats
-- **🌐 Multi-URL Support**: Monitor multiple websites from a single command
-- **🔍 Domain Filtering**: Include/exclude JS files based on domain patterns (e.g., *.felixforus.ca)
-- **🔒 Authentication Support**: Built-in login functionality for protected websites
-- **📡 Custom Headers**: Support for custom HTTP headers including cookies
-- **🗂️ Organized Storage**: Saves original, beautified, diff, and new code sections
-- **📈 Change Analytics**: Detailed statistics on additions, deletions, and modifications
-- **🔄 Hash Tracking**: SHA-256 hashing for reliable change detection
-- **🌐 Enhanced Detection**: Supports .js, .mjs, .jsx, .ts, .tsx files and content-type detection
-- **🎨 Professional UI**: Clean, colored terminal output with progress bars and summaries
+WebMonner monitors JavaScript files loaded by web applications and detects changes with precision. It supports continuous monitoring, domain filtering, authentication, and provides detailed diff analysis for security assessment.
 
-## 📦 Installation
+## Installation
 
 ```bash
-# Clone the repository
 git clone <repository-url>
 cd webmonner
-
-# Install dependencies
 npm install
 ```
 
-## 🔧 Configuration
+## Configuration
 
-Edit `config.json` to configure authentication settings:
+Create `config.json` for authentication settings:
 
 ```json
 {
@@ -44,304 +29,214 @@ Edit `config.json` to configure authentication settings:
 }
 ```
 
-## 💻 Usage
+## Usage
 
-### 🔍 **Domain Filtering (Your Use Case)**
+### Basic Scan
 
 ```bash
-# Monitor only JS files from *.felixforus.ca domains
-node cli.js --url https://bugcrowd.charm.felixforus.ca --include-domain "*.felixforus.ca"
+# Single URL scan
+node cli.js --url https://example.com
 
-# Live monitoring with domain filtering
-node cli.js --urls urls.txt --live --include-domain "*.felixforus.ca"
+# Multiple URLs from file
+node cli.js --urls targets.txt
+```
+
+### Domain Filtering
+
+```bash
+# Monitor only specific domains
+node cli.js --url https://app.example.com --include-domain "*.example.com"
 
 # Exclude specific domains
-node cli.js --url https://example.com --exclude-domain "*.google.com"
+node cli.js --url https://example.com --exclude-domain "*.analytics.com"
 ```
 
-### 🌐 **Multi-URL Monitoring**
-
-Create a `urls.txt` file:
-```
-# webmonner URL list
-https://bugcrowd.charm.felixforus.ca
-https://bugcrowd.lucky.felixforus.ca
-https://admin.felixforus.ca
-https://app.felixforus.ca
-```
+### Continuous Monitoring
 
 ```bash
-# Monitor multiple URLs
-node cli.js --urls urls.txt --include-domain "*.felixforus.ca"
-
-# Live monitoring of multiple URLs
-node cli.js --urls urls.txt --live --interval 60 --include-domain "*.felixforus.ca"
-```
-
-### 👁️ **New Code Preview**
-
-```bash
-# Show new code sections (default)
-node cli.js --url https://example.com
-
-# Disable code preview for faster processing
-node cli.js --url https://example.com --no-code-preview
-
-# Customize lines shown per section
-node cli.js --url https://example.com --max-lines 20
-
-# Quiet mode - minimal output
-node cli.js --url https://example.com --quiet
-```
-
-### 🔴 **Live Monitoring**
-
-```bash
-# Start live monitoring with default 30-second intervals
-node cli.js --url https://example.com --live
-
-# Custom monitoring interval (60 seconds)
+# Live monitoring with 60-second intervals
 node cli.js --url https://example.com --live --interval 60
 
-# Live monitoring with authentication
-node cli.js --url https://example.com --live --auth --interval 30
+# Live monitoring with domain filtering
+node cli.js --urls targets.txt --live --include-domain "*.example.com"
 ```
 
-### 🎯 **One-Time Scan**
+### Authentication
 
 ```bash
-# Basic single scan
-node cli.js --url https://example.com
-
-# Single scan with authentication
+# Enable authentication
 node cli.js --url https://example.com --auth
+
+# Custom headers
+node cli.js --url https://example.com --header "Authorization: Bearer token123"
 ```
 
-### 🔧 **Advanced Filtering**
+### Output Control
 
 ```bash
-# Include only specific domain pattern
-node cli.js --urls urls.txt --include-domain "*.felixforus.ca"
+# Quiet mode
+node cli.js --url https://example.com --quiet
 
-# Exclude specific domain pattern
-node cli.js --url https://example.com --exclude-domain "*.ads.com"
+# Verbose mode
+node cli.js --url https://example.com --verbose
 
-# Include only specific URL patterns
-node cli.js --url https://example.com --include-url "*jquery*"
-
-# Exclude specific URL patterns
-node cli.js --url https://example.com --exclude-url "*analytics*"
-
-# Combine multiple filters
-node cli.js --urls urls.txt \
-  --include-domain "*.felixforus.ca" \
-  --exclude-url "*tracking*" \
-  --live --interval 45
+# Disable colors (for CI/CD)
+node cli.js --url https://example.com --no-color
 ```
 
-## 📁 Enhanced Output Structure
+## Command Line Options
 
 ```
-data/
-└── [domain]/
-    ├── original/              # Raw JavaScript files
-    ├── beautified/            # Beautified JavaScript files
-    ├── diffs/                 # Detailed diff files with timestamps
-    ├── new-code/              # New code sections (raw & beautified)
-    ├── hashes.json            # Hash tracking database
-    └── change-report.json     # Latest scan summary
+URL Options:
+  --url <url>                  Target URL
+  --urls <file>                File containing URLs (one per line)
+
+Filtering:
+  --include-domain <pattern>   Include domains matching pattern
+  --exclude-domain <pattern>   Exclude domains matching pattern
+  --include-url <pattern>      Include URLs matching pattern
+  --exclude-url <pattern>      Exclude URLs matching pattern
+
+Monitoring:
+  --live                       Enable continuous monitoring
+  --interval <seconds>         Monitoring interval (default: 30)
+  --auth                       Enable authentication
+
+Output:
+  --quiet                      Minimal output
+  --verbose                    Show all file status information
+  --no-color                   Disable colored output
+  --no-code-preview           Disable code change preview
+  --max-lines <number>        Lines per code section (default: 10)
+
+Debugging:
+  --debug-colors              Show color support information
+  --test-discord              Test Discord notifications
 ```
 
-## 👁️ New Code Preview Example
-
-When changes are detected, webmonner shows you the actual new code:
-
-```
-╭─ Original JavaScript - New/Changed Code:
-│
-│ ─── Section 1 ───
-│ +  247 function newFeature() {
-│ +  248   console.log('New functionality added');
-│ +  249   return true;
-│ +  250 }
-│ 
-│ ─── Section 2 ───
-│ -  180   // Old code removed
-│ +  180   // Updated implementation
-│ +  181   const enhanced = true;
-│ 
-╭─ Beautified JavaScript - New/Changed Code:
-│
-│ ─── Section 1 ───
-│ +  247 function newFeature() {
-│ +  248   console.log('New functionality added');
-│ +  249   return true;
-│ +  250 }
-│
-╭─ Change Summary
-│
-│ File: 45.2 KB | Lines: 1,247
-│ Added: 15 | Removed: 3
-│ New sections: 2 raw, 2 beautified
-│ Files saved:
-│   • Diff: data/example.com/diffs/app_2024-01-15T10-30-45.diff
-│   • New code: data/example.com/new-code/app_2024-01-15T10-30-45_raw.json
-│   • Beautified: data/example.com/new-code/app_2024-01-15T10-30-45_beautified.json
-```
-
-## 🔍 Filtering System
-
-### 📋 **Filter Types**
-
-| Filter | Description | Example |
-|--------|-------------|---------|
-| `--include-domain` | Only process JS files from matching domains | `*.felixforus.ca` |
-| `--exclude-domain` | Skip JS files from matching domains | `*.ads.com` |
-| `--include-url` | Only process JS files with matching URLs | `*jquery*` |
-| `--exclude-url` | Skip JS files with matching URLs | `*tracking*` |
-
-### 🎯 **Pattern Matching**
-
-- **Wildcards**: Use `*` for any characters, `?` for single character
-- **Case Insensitive**: All patterns are case-insensitive
-- **Domain Examples**:
-  - `*.felixforus.ca` matches `admin.felixforus.ca`, `app.felixforus.ca`
-  - `felixforus.ca` matches exactly `felixforus.ca`
-- **URL Examples**:
-  - `*jquery*` matches any URL containing "jquery"
-  - `*.min.js` matches any minified JS file
-
-## 🔍 Multi-URL File Format
+## URL File Format
 
 Create a text file with URLs (one per line):
 
 ```
 # Comments start with #
-https://bugcrowd.charm.felixforus.ca
-https://bugcrowd.lucky.felixforus.ca
-https://admin.felixforus.ca
-
-# More URLs
-https://app.felixforus.ca
-https://api.felixforus.ca
+https://app.example.com
+https://admin.example.com
+https://api.example.com
 ```
 
-## 🔧 Complete CLI Options
+## Pattern Matching
+
+Supports wildcard patterns:
+- `*.example.com` matches any subdomain of example.com
+- `*jquery*` matches any URL containing "jquery"
+- `*.min.js` matches any minified JavaScript file
+
+## Data Storage
+
+Files are organized by domain:
+
+```
+data/
+├── example.com/
+│   ├── original/        # Raw JavaScript files
+│   ├── beautified/      # Formatted JavaScript files
+│   ├── diffs/           # Change analysis files
+│   ├── new-code/        # New code sections
+│   └── hashes.json      # File integrity tracking
+```
+
+## File Detection
+
+Detects JavaScript files by:
+- File extensions: .js, .mjs, .jsx, .ts, .tsx
+- Content-Type headers: application/javascript, text/javascript
+- Response analysis for dynamic content
+
+## Change Detection
+
+Uses SHA-256 hashing for reliable change detection:
+- Tracks all JavaScript files per domain
+- Identifies new, modified, and removed files
+- Provides line-by-line diff analysis
+- Preserves change history
+
+## Discord Integration
 
 ```bash
-node cli.js [options]
+# Configure Discord webhook
+node cli.js --url https://example.com --discord-webhook "https://discord.com/api/webhooks/..."
 
-URL Options:
-  --url <url>                  Single target URL
-  --urls <file>                File containing list of URLs
-
-Filter Options:
-  --include-domain <pattern>   Only monitor domains matching pattern
-  --exclude-domain <pattern>   Exclude domains matching pattern
-  --include-url <pattern>      Only monitor URLs matching pattern
-  --exclude-url <pattern>      Exclude URLs matching pattern
-
-Monitoring Options:
-  --live                       Enable live monitoring
-  --interval <seconds>         Monitoring interval (default: 30)
-  --auth                       Enable authentication
-  --header <header...>         Custom headers
-
-Output Options:
-  --quiet                      Reduce output verbosity
-  --no-code-preview           Disable showing new code sections
-  --max-lines <number>        Maximum lines per code section (default: 10)
-
-Help:
-  -h, --help                   Display help
+# Test notifications
+node cli.js --test-discord --discord-webhook "https://discord.com/api/webhooks/..."
 ```
 
-## 📊 Example Output with New Code Preview
+## Notifications
 
-```
-╭─────────────────────────────────────────────────────────────────────────
-│
-│  ██╗    ██╗███████╗██████╗ ███╗   ███╗ ██████╗ ███╗   ██╗███╗   ██╗███████╗██████╗ 
-│  ██║    ██║██╔════╝██╔══██╗████╗ ████║██╔═══██╗████╗  ██║████╗  ██║██╔════╝██╔══██╗
-│  ██║ █╗ ██║█████╗  ██████╔╝██╔████╔██║██║   ██║██╔██╗ ██║██╔██╗ ██║█████╗  ██████╔╝
-│  ██║███╗██║██╔══╝  ██╔══██╗██║╚██╔╝██║██║   ██║██║╚██╗██║██║╚██╗██║██╔══╝  ██╔══██╗
-│  ╚███╔███╔╝███████╗██████╔╝██║ ╚═╝ ██║╚██████╔╝██║ ╚████║██║ ╚████║███████╗██║  ██║
-│   ╚══╝╚══╝ ╚══════╝╚═════╝ ╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═══╝╚═╝  ╚═══╝╚══════╝╚═╝  ╚═╝
-│
-│  Professional JavaScript Monitoring Tool
-│
-╰─────────────────────────────────────────────────────────────────────────
+Supports Discord notifications for:
+- New files detected
+- File modifications
+- Scan completion
+- Error conditions
 
-╭─ Configuration
-│
-│ Target URLs          3
-│ Authentication       Enabled
-│ Live Mode           Every 60s
-│ Custom Headers       0
-│ Domain Filter        *.felixforus.ca
-│ URL Filter          None
-│ Code Preview         Enabled
-│ Max Lines           10
-╰─────────────────────────────────────────────────────────────────────────
+## Security Features
 
-╭─ Starting Web Crawler
-│
-│ ℹ Processing 3 URL(s)
-│
-│ [████████████████████] 100% Crawling URLs Processing app.felixforus.ca | 45s elapsed | ETA: 0s
-│ ✓ Crawling URLs Complete in 45s
+- Request authentication support
+- Custom HTTP headers
+- SSL/TLS validation
+- Rate limiting compliance
+- Session management
 
-╭─ Scan Complete
-│
-│ URLs Processed       3
-│ JS Files Found       12
-│ Files Processed      8
-│ Files Filtered       4
-│ New Files           2
-│ Changed Files        1
-│ New Code Sections    6
-│ Errors              0
-│ Scan Time           10:30:45 AM
-╰─────────────────────────────────────────────────────────────────────────
-```
+## Terminal Compatibility
 
-## 🎯 Perfect for Your Use Case
+Automatically detects terminal capabilities:
+- Full color support (24-bit)
+- Basic color support (ANSI)
+- Plain text fallback
+- tmux/screen compatibility
 
-**Your requirement: Only monitor `*.felixforus.ca` files and see new code**
+## Performance
+
+- Concurrent file processing
+- Efficient change detection
+- Memory-optimized diff analysis
+- Configurable scan intervals
+
+## Error Handling
+
+- Network timeout handling
+- SSL certificate validation
+- DNS resolution errors
+- Rate limit detection
+- Graceful degradation
+
+## Production Deployment
 
 ```bash
-# Single URL with domain filtering and code preview
-node cli.js --url https://bugcrowd.charm.felixforus.ca --include-domain "*.felixforus.ca"
+# Environment variables
+export NO_COLOR=1                    # Disable colors
+export DISCORD_WEBHOOK=https://...   # Discord integration
 
-# Multiple URLs with domain filtering and custom code preview
-node cli.js --urls urls.txt --include-domain "*.felixforus.ca" --max-lines 15
-
-# Live monitoring with domain filtering
-node cli.js --urls urls.txt --live --include-domain "*.felixforus.ca" --interval 60
+# Systemd service example
+node cli.js --urls production.txt --live --interval 300 --quiet
 ```
 
-This will:
-- ✅ Process JS files from `cdn.felixforus.ca`, `admin.felixforus.ca`, etc.
-- 🚫 Skip JS files from `google.com`, `facebook.com`, etc.
-- 👁️ Show you the exact new/changed JavaScript code
-- 📊 Display both original and beautified code changes
-- 🔄 Monitor multiple URLs simultaneously
-- 💾 Save detailed diff files for later analysis
+## Maintenance
 
-## 🔒 Security Notes
+```bash
+# Clean up old diff files
+node cli.js --cleanup-diffs
 
-- Store sensitive credentials securely
-- Use environment variables for production
-- Respect website terms of service
-- Be mindful of rate limiting with live monitoring
+# Set maximum diff files per domain
+node cli.js --max-diff-files 100
+```
 
-## 🤝 Contributing
+## Requirements
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a pull request
+- Node.js 16.0 or higher
+- npm or yarn
+- Network access to target URLs
 
-## 📄 License
+## License
 
-This project is licensed under the MIT License. 
+MIT License - see LICENSE file for details. 
