@@ -211,15 +211,20 @@ export const formatUrl = (url) => {
     }
 
     const urlObj = new URL(url);
-    const domain = colors.bright(urlObj.hostname);
-    const path = urlObj.pathname === '/' ? '' : colors.muted(urlObj.pathname);
-    const query = urlObj.search ? colors.dim(urlObj.search) : '';
 
-    return `${domain}${path}${query}`;
+    const protocol = colors.dim(urlObj.protocol + '//');
+    const domain = colors.highlight(urlObj.hostname);
+    const port = urlObj.port ? ':' + urlObj.port : '';
+    const path = colors.muted(urlObj.pathname || '/');
+    const query = urlObj.search ? colors.info(urlObj.search) : '';
+    const hash = urlObj.hash ? colors.info(urlObj.hash) : '';
+
+    return `${protocol}${domain}${port}${path}${query}${hash}`;
   } catch {
     return colors.muted(url);
   }
 };
+
 
 // Clean file size formatting
 export const formatFileSize = (bytes) => {

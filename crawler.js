@@ -446,7 +446,7 @@ export default async function runCrawler(options) {
               }
             }
             
-            if (statusMessages.filtered.length > 0) {
+            if (statusMessages.filtered.length >= 0) {
               log.separator();
               log.muted(`${statusMessages.filtered.length} files filtered`);
             }
