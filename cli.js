@@ -22,6 +22,7 @@ program
   .option('--include-url <pattern>', 'Only monitor JS files matching this URL pattern')
   .option('--exclude-url <pattern>', 'Exclude JS files matching this URL pattern')
   .option('--quiet', 'Reduce output verbosity')
+  .option('--verbose', 'Show all file statuses including unchanged files')
   .option('--no-code-preview', 'Disable showing new code sections in output')
   .option('--max-lines <number>', 'Maximum lines to show per code section (default: 10)', '10')
   .option('--discord-webhook <url>', 'Discord webhook URL for notifications')
@@ -124,6 +125,7 @@ const config = {
   interval: parseInt(opts.interval) * 1000, // Convert to milliseconds
   filters: filters,
   quiet: opts.quiet || false,
+  verbose: opts.verbose || false,
   showCodePreview: opts.codePreview !== false,
   maxLines: parseInt(opts.maxLines) || 10,
   discordNotifier: discordNotifier,
@@ -140,6 +142,7 @@ const configData = {
   'Custom Headers': Object.keys(headers).length,
   'Domain Filter': filters.includeDomain || filters.excludeDomain || 'None',
   'URL Filter': filters.includeUrl || filters.excludeUrl || 'None',
+  'Output Mode': config.quiet ? 'Quiet' : config.verbose ? 'Verbose' : 'Normal',
   'Code Preview': config.showCodePreview ? 'Enabled' : 'Disabled',
   'Max Lines': config.maxLines,
   'Discord Alerts': opts.discordWebhook ? 'Enabled' : 'Disabled',
