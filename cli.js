@@ -218,13 +218,15 @@ if (config.liveMode) {
       } catch (error) {
         log.error(`Scheduled scan failed: ${error.message}`);
         
-        // Send Discord notification for error
+        // Add to batch for Discord notification
         if (discordNotifier.enabled) {
-          await discordNotifier.sendNotification('error', {
+          discordNotifier.addToBatch('error', {
             type: 'SCHEDULED_SCAN_ERROR',
             message: error.message,
             url: 'Live monitoring'
           });
+          // Send batched summary for errors
+          await discordNotifier.sendBatchedSummary();
         }
         
         // Still show countdown even after error

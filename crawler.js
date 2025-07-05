@@ -292,9 +292,9 @@ export default async function runCrawler(options) {
                     results.newFiles++;
                     statusMessages.new.push(respUrl);
                     
-                    // Send Discord notification for new file
+                    // Add to batch for Discord notification
                     if (discordNotifier && discordNotifier.enabled) {
-                      await discordNotifier.sendNotification('new_file', {
+                      discordNotifier.addToBatch('new_file', {
                         url: respUrl,
                         domain: domain,
                         fileSize: formatFileSize(buffer.length),
@@ -323,9 +323,9 @@ export default async function runCrawler(options) {
                     urlResults.newCodeSections += sections;
                     results.newCodeSections += sections;
                     
-                    // Send Discord notification for file changes
+                    // Add to batch for Discord notification
                     if (!isNewFile && discordNotifier && discordNotifier.enabled) {
-                      await discordNotifier.sendNotification('file_changed', {
+                      discordNotifier.addToBatch('file_changed', {
                         url: respUrl,
                         domain: domain,
                         addedLines: result.diffInfo.addedLines,
@@ -350,9 +350,9 @@ export default async function runCrawler(options) {
                 results.errors++;
                 results.errorDetails.push({ url: respUrl, type: 'FILE_ERROR', message: errorMsg });
                 
-                // Send Discord notification for error
+                // Add to batch for Discord notification
                 if (discordNotifier && discordNotifier.enabled) {
-                  await discordNotifier.sendNotification('error', {
+                  discordNotifier.addToBatch('error', {
                     type: 'FILE_PROCESSING_ERROR',
                     url: respUrl,
                     message: errorMsg
@@ -526,19 +526,9 @@ export default async function runCrawler(options) {
 
     summary.create('Scan Results', summaryData);
 
-    // Send Discord notification for scan completion
+    // Send Discord batched summary for changes and errors
     if (discordNotifier && discordNotifier.enabled) {
-      const nextScan = liveMode ? `in ${Math.round(options.interval / 1000)}s` : null;
-      await discordNotifier.sendNotification('scan_complete', {
-        urlsProcessed: results.urlsProcessed,
-        totalFiles: results.totalFiles + results.filteredFiles,
-        newFiles: results.newFiles,
-        changedFiles: results.changedFiles,
-        filteredFiles: results.filteredFiles,
-        errors: results.errors,
-        duration: formatDuration(scanDuration),
-        nextScan: nextScan
-      });
+      await discordNotifier.sendBatchedSummary();
     }
 
     // Show error summary if there were errors
@@ -566,9 +556,9 @@ export default async function runCrawler(options) {
     const errorInfo = handleNetworkError(error, 'crawler');
     log.error(`Crawler error: ${errorInfo.message}`);
     
-    // Send Discord notification for critical error
+    // Add to batch for Discord notification
     if (discordNotifier && discordNotifier.enabled) {
-      await discordNotifier.sendNotification('error', {
+      discordNotifier.addToBatch('error', {
         type: 'CRAWLER_ERROR',
         message: errorInfo.message,
         url: 'System'

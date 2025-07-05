@@ -8,12 +8,192 @@ export class DiscordNotifier {
     this.sentNotifications = new Map(); // Track sent notifications to prevent duplicates
     this.rateLimitReset = 0; // Track rate limit reset time
     this.pendingNotifications = []; // Queue for pending notifications
+    // New: Batch changes for summary notifications
+    this.batchedChanges = {
+      newFiles: [],
+      changedFiles: [],
+      errors: []
+    };
   }
 
+  // New: Add change to batch instead of sending immediately
+  addToBatch(type, data) {
+    if (!this.enabled) return;
+
+    switch (type) {
+      case 'new_file':
+        this.batchedChanges.newFiles.push(data);
+        break;
+      case 'file_changed':
+        this.batchedChanges.changedFiles.push(data);
+        break;
+      case 'error':
+        this.batchedChanges.errors.push(data);
+        break;
+    }
+  }
+
+  // New: Send batched summary at end of scan
+  async sendBatchedSummary() {
+    if (!this.enabled) return;
+
+    const { newFiles, changedFiles, errors } = this.batchedChanges;
+    const totalChanges = newFiles.length + changedFiles.length;
+
+    // Only send if there are changes
+    if (totalChanges === 0 && errors.length === 0) {
+      this.clearBatch();
+      return;
+    }
+
+    try {
+      const embed = this.createBatchedSummaryEmbed(newFiles, changedFiles, errors);
+      const payload = {
+        username: 'WebMonner',
+        embeds: [embed]
+      };
+
+      const response = await fetch(this.webhookUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (response.ok) {
+        console.log(`Discord summary sent: ${totalChanges} changes, ${errors.length} errors`);
+      } else if (response.status === 429) {
+        // Handle rate limiting
+        const retryAfter = response.headers.get('Retry-After') || 60;
+        this.rateLimitReset = Date.now() + (retryAfter * 1000);
+        console.log(`Discord rate limited, retry after ${retryAfter} seconds`);
+      } else {
+        console.error(`Discord summary failed: ${response.status} ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error(`Discord summary error: ${error.message}`);
+    }
+
+    // Clear batch after sending
+    this.clearBatch();
+  }
+
+  // New: Create batched summary embed
+  createBatchedSummaryEmbed(newFiles, changedFiles, errors) {
+    const timestamp = new Date().toISOString();
+    const totalChanges = newFiles.length + changedFiles.length;
+    
+    let title = '';
+    let color = 0x808080; // Gray default
+    
+    if (totalChanges > 0) {
+      title = `📊 Scan Summary - ${totalChanges} Change${totalChanges > 1 ? 's' : ''} Detected`;
+      color = 0x00ff00; // Green for changes
+    } else if (errors.length > 0) {
+      title = `❌ Scan Summary - ${errors.length} Error${errors.length > 1 ? 's' : ''} Occurred`;
+      color = 0xff0000; // Red for errors only
+    }
+
+    const fields = [];
+
+    // Add new files summary
+    if (newFiles.length > 0) {
+      const fileList = newFiles.slice(0, 5).map(file => {
+        const fileName = file.url.split('/').pop() || 'unknown.js';
+        return `• **${fileName}** (${file.lines} lines)`;
+      }).join('\n');
+      
+      const moreFiles = newFiles.length > 5 ? `\n+ ${newFiles.length - 5} more files...` : '';
+      
+      fields.push({
+        name: `🆕 New Files (${newFiles.length})`,
+        value: fileList + moreFiles,
+        inline: false
+      });
+    }
+
+    // Add changed files summary
+    if (changedFiles.length > 0) {
+      const fileList = changedFiles.slice(0, 5).map(file => {
+        const fileName = file.url.split('/').pop() || 'unknown.js';
+        const changes = `+${file.addedLines}/-${file.removedLines}`;
+        return `• **${fileName}** (${changes} lines)`;
+      }).join('\n');
+      
+      const moreFiles = changedFiles.length > 5 ? `\n+ ${changedFiles.length - 5} more files...` : '';
+      
+      fields.push({
+        name: `🔄 Changed Files (${changedFiles.length})`,
+        value: fileList + moreFiles,
+        inline: false
+      });
+    }
+
+    // Add errors summary
+    if (errors.length > 0) {
+      const errorList = errors.slice(0, 3).map(error => {
+        const url = error.url ? new URL(error.url).pathname.split('/').pop() : 'Unknown';
+        return `• **${url}**: ${error.message.substring(0, 100)}${error.message.length > 100 ? '...' : ''}`;
+      }).join('\n');
+      
+      const moreErrors = errors.length > 3 ? `\n+ ${errors.length - 3} more errors...` : '';
+      
+      fields.push({
+        name: `❌ Errors (${errors.length})`,
+        value: errorList + moreErrors,
+        inline: false
+      });
+    }
+
+    // Add summary stats
+    if (totalChanges > 0) {
+      const totalLines = [...newFiles, ...changedFiles].reduce((sum, file) => {
+        return sum + (file.addedLines || file.lines || 0);
+      }, 0);
+      
+      const domains = new Set([...newFiles, ...changedFiles].map(file => file.domain));
+      
+      fields.push({
+        name: '📈 Statistics',
+        value: `**Total Lines Added:** ${totalLines}\n**Domains Affected:** ${domains.size}\n**Scan Time:** ${timestamp.split('T')[1].split('.')[0]}`,
+        inline: true
+      });
+    }
+
+    return {
+      title,
+      description: totalChanges > 0 ? 
+        `JavaScript files have been updated. Check the details below.` : 
+        `Scan completed with errors. No file changes detected.`,
+      color,
+      fields,
+      footer: { text: 'WebMonner Summary' },
+      timestamp
+    };
+  }
+
+  // New: Clear batched changes
+  clearBatch() {
+    this.batchedChanges = {
+      newFiles: [],
+      changedFiles: [],
+      errors: []
+    };
+  }
+
+  // Keep existing methods for backward compatibility but modify behavior
   async sendNotification(type, data) {
     if (!this.enabled) return;
 
-    // Create unique key for deduplication (only for file changes and new files)
+    // For file changes and errors, add to batch instead of sending immediately
+    if (type === 'new_file' || type === 'file_changed' || type === 'error') {
+      this.addToBatch(type, data);
+      return;
+    }
+
+    // For other notification types, send immediately
+    // Create unique key for deduplication
     const notificationKey = this.createNotificationKey(type, data);
     
     // Check if we've already sent this notification recently
