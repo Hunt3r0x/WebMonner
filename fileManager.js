@@ -271,25 +271,13 @@ export function saveJSFile(domain, url, buffer, isNewFile = false, options = {})
       displayNewCode(beautifiedNewCode, 'Beautified JavaScript', options);
     }
     
-    // Log detailed changes summary
-    if (!quiet) {
-      log.separator();
-      log.info(`Change Summary`);
-      log.muted(`File: ${formatFileSize(diffInfo.fileSize)} | Lines: ${diffInfo.totalLines}`);
-      log.muted(`Added: ${diffInfo.addedLines} | Removed: ${diffInfo.removedLines}`);
-      log.muted(`New sections: ${diffInfo.newCodeSections.raw} raw, ${diffInfo.newCodeSections.beautified} beautified`);
-      log.muted(`Files saved:`);
-      if (saveDiff) {
-        log.muted(`  • Diff: ${diffPath}`);
-      }
-      log.muted(`  • Raw JS: ${rawJSFile}`);
-      log.muted(`  • Beautified JS: ${beautifiedJSFile}`);
-    }
+    // Add file paths to diffInfo for potential logging
+    diffInfo.savedFiles = {
+      diffPath: saveDiff ? diffPath : null,
+      rawJSFile,
+      beautifiedJSFile
+    };
   } else if (isNewFile) {
-    if (!quiet) {
-      log.info(`New file: ${formatFileSize(buffer.length)} | ${buffer.toString().split('\n').length} lines`);
-    }
-    
     // Save new file preview as JavaScript
     const previewJSContent = [
       `// ===== NEW FILE PREVIEW =====`,
@@ -305,6 +293,21 @@ export function saveJSFile(domain, url, buffer, isNewFile = false, options = {})
     
     const previewJSPath = newCodePath.replace('.json', '_preview.js');
     fs.writeFileSync(previewJSPath, previewJSContent);
+    
+    // Don't log immediately - let the crawler handle organized display
+    diffInfo = {
+      timestamp,
+      url,
+      hash,
+      fileSize: buffer.length,
+      totalLines: buffer.toString().split('\n').length,
+      isNewFile: true,
+      savedFiles: {
+        diffPath: null,
+        rawJSFile: previewJSPath,
+        beautifiedJSFile: null
+      }
+    };
     
     // For new files, show a preview of the content
     if (showCodePreview && !quiet) {
