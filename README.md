@@ -47,8 +47,38 @@ node cli.js --urls targets.txt
 # Monitor only specific domains
 node cli.js --url https://app.example.com --include-domain "*.example.com"
 
+# Monitor multiple domains
+node cli.js --url https://app.example.com --include-domain "*.example.com" --include-domain "*.api.com"
+
 # Exclude specific domains
 node cli.js --url https://example.com --exclude-domain "*.analytics.com"
+
+# Exclude multiple domains
+node cli.js --url https://example.com --exclude-domain "*.analytics.com" --exclude-domain "*.ads.com"
+```
+
+### Multiple Filters
+
+```bash
+# Multiple include domains
+node cli.js --urls targets.txt --include-domain "*.example.com" --include-domain "*.api.com" --include-domain "*.admin.com"
+
+# Multiple exclude domains
+node cli.js --urls targets.txt --exclude-domain "*.analytics.com" --exclude-domain "*.ads.com" --exclude-domain "*.tracking.com"
+
+# Combine include and exclude domain filters
+node cli.js --urls targets.txt --include-domain "*.example.com" --exclude-domain "*.ads.example.com"
+
+# Multiple URL filters
+node cli.js --urls targets.txt --include-url "*admin*" --include-url "*api*" --exclude-url "*.min.js"
+
+# Complex filtering with multiple patterns
+node cli.js --urls targets.txt \
+  --include-domain "*.example.com" \
+  --include-domain "*.api.com" \
+  --exclude-domain "*.cdn.example.com" \
+  --exclude-url "*.min.js" \
+  --exclude-url "*vendor*"
 ```
 
 ### Continuous Monitoring
@@ -59,6 +89,9 @@ node cli.js --url https://example.com --live --interval 60
 
 # Live monitoring with domain filtering
 node cli.js --urls targets.txt --live --include-domain "*.example.com"
+
+# Live monitoring with multiple filters
+node cli.js --urls targets.txt --live --include-domain "*.example.com" --include-domain "*.api.com"
 ```
 
 ### Authentication
@@ -92,10 +125,10 @@ URL Options:
   --urls <file>                File containing URLs (one per line)
 
 Filtering:
-  --include-domain <pattern>   Include domains matching pattern
-  --exclude-domain <pattern>   Exclude domains matching pattern
-  --include-url <pattern>      Include URLs matching pattern
-  --exclude-url <pattern>      Exclude URLs matching pattern
+  --include-domain <pattern>   Include domains matching pattern (can be used multiple times)
+  --exclude-domain <pattern>   Exclude domains matching pattern (can be used multiple times)
+  --include-url <pattern>      Include URLs matching pattern (can be used multiple times)
+  --exclude-url <pattern>      Exclude URLs matching pattern (can be used multiple times)
 
 Monitoring:
   --live                       Enable continuous monitoring
