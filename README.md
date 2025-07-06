@@ -59,18 +59,13 @@ node cli.js --url https://example.com --exclude-domain "*.analytics.com" --exclu
 
 ### Multiple Filters
 
+**Multiple Flag Approach:**
 ```bash
 # Multiple include domains
 node cli.js --urls targets.txt --include-domain "*.example.com" --include-domain "*.api.com" --include-domain "*.admin.com"
 
 # Multiple exclude domains
 node cli.js --urls targets.txt --exclude-domain "*.analytics.com" --exclude-domain "*.ads.com" --exclude-domain "*.tracking.com"
-
-# Combine include and exclude domain filters
-node cli.js --urls targets.txt --include-domain "*.example.com" --exclude-domain "*.ads.example.com"
-
-# Multiple URL filters
-node cli.js --urls targets.txt --include-url "*admin*" --include-url "*api*" --exclude-url "*.min.js"
 
 # Complex filtering with multiple patterns
 node cli.js --urls targets.txt \
@@ -79,6 +74,28 @@ node cli.js --urls targets.txt \
   --exclude-domain "*.cdn.example.com" \
   --exclude-url "*.min.js" \
   --exclude-url "*vendor*"
+```
+
+**Comma-Separated Approach:**
+```bash
+# Multiple include domains (comma-separated)
+node cli.js --urls targets.txt --include-domain "*.example.com,*.api.com,*.admin.com"
+
+# Multiple exclude domains (comma-separated)
+node cli.js --urls targets.txt --exclude-domain "*.analytics.com,*.ads.com,*.tracking.com"
+
+# Multiple URL filters (comma-separated)
+node cli.js --urls targets.txt --include-url "*admin*,*api*" --exclude-url "*.min.js,*vendor*"
+```
+
+**Mixed Approach (both methods work together):**
+```bash
+# Combine comma-separated and multiple flags
+node cli.js --urls targets.txt \
+  --include-domain "*.example.com,*.api.com" \
+  --include-domain "*.admin.com" \
+  --exclude-domain "*.cdn.example.com" \
+  --exclude-url "*.min.js,*vendor*"
 ```
 
 ### Continuous Monitoring
@@ -113,9 +130,29 @@ node cli.js --url https://example.com --quiet
 # Verbose mode
 node cli.js --url https://example.com --verbose
 
+# Debug mode (detailed technical information)
+node cli.js --url https://example.com --debug
+
 # Disable colors (for CI/CD)
 node cli.js --url https://example.com --no-color
 ```
+
+### Debug Mode
+
+The `--debug` flag provides detailed technical information for troubleshooting:
+
+```bash
+node cli.js --url https://example.com --debug
+```
+
+**Debug output includes:**
+- HTTP response headers (Content-Type, Content-Encoding, etc.)
+- Response status codes and error details
+- Puppeteer buffer vs direct fetch comparisons
+- SHA256 hash calculations and comparisons
+- File filtering decisions
+- Cache behavior and 304 responses
+- Protocol errors and fallback mechanisms
 
 ## Command Line Options
 
@@ -125,10 +162,10 @@ URL Options:
   --urls <file>                File containing URLs (one per line)
 
 Filtering:
-  --include-domain <pattern>   Include domains matching pattern (can be used multiple times)
-  --exclude-domain <pattern>   Exclude domains matching pattern (can be used multiple times)
-  --include-url <pattern>      Include URLs matching pattern (can be used multiple times)
-  --exclude-url <pattern>      Exclude URLs matching pattern (can be used multiple times)
+  --include-domain <pattern>   Include domains matching pattern (comma-separated or multiple flags)
+  --exclude-domain <pattern>   Exclude domains matching pattern (comma-separated or multiple flags)
+  --include-url <pattern>      Include URLs matching pattern (comma-separated or multiple flags)
+  --exclude-url <pattern>      Exclude URLs matching pattern (comma-separated or multiple flags)
 
 Monitoring:
   --live                       Enable continuous monitoring
@@ -138,6 +175,7 @@ Monitoring:
 Output:
   --quiet                      Minimal output
   --verbose                    Show all file status information
+  --debug                      Enable detailed debugging output
   --no-color                   Disable colored output
   --no-code-preview           Disable code change preview
   --max-lines <number>        Lines per code section (default: 10)
