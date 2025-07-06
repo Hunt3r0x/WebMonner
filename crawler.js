@@ -110,7 +110,7 @@ function handleNetworkError(error, url) {
 }
 
 export default async function runCrawler(options) {
-  const { urls, authEnabled, customHeaders, liveMode, filters, quiet, verbose, showCodePreview, maxLines, discordNotifier } = options;
+  const { urls, authEnabled, customHeaders, liveMode, filters, quiet, verbose, debug, showCodePreview, maxLines, discordNotifier } = options;
   
   let browser;
   const scanStartTime = Date.now();
@@ -260,21 +260,86 @@ export default async function runCrawler(options) {
               jsFiles.add(respUrl);
               urlResults.found++;
               
+              if (debug) {
+                const headers = response.headers();
+                log.debug(`Detected JS: ${respUrl}`);
+                log.debug(`  Content-Type: ${contentType}`);
+                log.debug(`  Content-Length: ${headers['content-length'] || 'unknown'}`);
+                log.debug(`  Content-Encoding: ${headers['content-encoding'] || 'none'}`);
+                log.debug(`  Cache-Control: ${headers['cache-control'] || 'none'}`);
+                log.debug(`  ETag: ${headers['etag'] || 'none'}`);
+              }
+              
               // Apply filters
               if (!shouldProcessJSFile(respUrl, filters)) {
                 filteredFiles.add(respUrl);
                 urlResults.filtered++;
                 results.filteredFiles++;
                 statusMessages.filtered.push(respUrl);
+                if (debug) {
+                  log.debug(`  FILTERED OUT by domain/URL patterns`);
+                }
                 return;
+              }
+              
+              if (debug) {
+                log.debug(`  ACCEPTED for processing`);
               }
               
               urlResults.processed++;
               results.totalFiles++;
               
+                            // USE DIRECT FETCH AS PRIMARY METHOD (more reliable than Puppeteer buffer)
+              let buffer;
               try {
-                const buffer = await response.buffer();
+                // Check response status first
+                const status = response.status();
+                const statusText = response.statusText();
+                
+                if (status !== 200 && status !== 206 && status !== 304) {
+                  // Skip files with error status codes
+                  if (!quiet) {
+                    log.warning(`${respUrl} returned ${status} ${statusText}, skipping file`);
+                  }
+                  return;
+                }
+                
+                if (debug) {
+                  log.debug(`${respUrl} → HTTP ${status}, using direct fetch (more reliable)`);
+                }
+                
+                // Use direct fetch as primary method - works for 200, 304, and 206
+                const directResponse = await page.evaluate(async (url) => {
+                  const response = await fetch(url);
+                  if (response.ok) {
+                    return await response.text();
+                  }
+                  throw new Error(`Direct fetch failed: ${response.status} ${response.statusText}`);
+                }, respUrl);
+                
+                buffer = Buffer.from(directResponse, 'utf8');
+                
+                if (debug) {
+                  log.debug(`${respUrl} → Direct fetch successful: ${buffer.length} bytes`);
+                }
+                
+              } catch (fetchError) {
+                if (!quiet) {
+                  log.warning(`Failed to fetch ${respUrl}: ${fetchError.message}, skipping file`);
+                }
+                return; // Skip this file
+              }
+              
+              // Now process the captured buffer
+              try {
+                
                 const hash = crypto.createHash('sha256').update(buffer).digest('hex');
+
+                if (debug) {
+                  log.debug(`${respUrl} → Processing file content`);
+                  log.debug(`  File size: ${buffer.length} bytes`);
+                  log.debug(`  SHA256: ${hash.substring(0, 16)}...`);
+                }
 
                 const hashPath = `data/${domain}/hashes.json`;
                 let hashes = {};
@@ -283,8 +348,18 @@ export default async function runCrawler(options) {
                 if (fs.existsSync(hashPath)) {
                   try {
                     hashes = JSON.parse(fs.readFileSync(hashPath, 'utf-8'));
+                    if (debug) {
+                      log.debug(`  Loaded ${Object.keys(hashes).length} existing hashes for ${domain}`);
+                    }
                   } catch (parseError) {
                     hashes = {};
+                    if (debug) {
+                      log.debug(`  Hash file corrupted, starting fresh: ${parseError.message}`);
+                    }
+                  }
+                } else {
+                  if (debug) {
+                    log.debug(`  No existing hash file for ${domain}, first scan`);
                   }
                 }
 
@@ -292,19 +367,33 @@ export default async function runCrawler(options) {
                 const isNewFile = !prevHash;
                 const hasChanged = !prevHash || prevHash !== hash;
 
+                if (debug) {
+                  if (isNewFile) {
+                    log.debug(`  STATUS: NEW FILE (no previous hash)`);
+                  } else if (hasChanged) {
+                    log.debug(`  STATUS: CHANGED (${prevHash.substring(0, 16)}... → ${hash.substring(0, 16)}...)`);
+                  } else {
+                    log.debug(`  STATUS: UNCHANGED (${hash.substring(0, 16)}...)`);
+                  }
+                }
+
                 if (hasChanged) {
+                  // Save file with diff analysis and new code preview FIRST
+                  const saveOptions = {
+                    quiet: quiet,
+                    showCodePreview: showCodePreview,
+                    maxLines: maxLines
+                  };
+                  
+                  const result = saveJSFile(domain, respUrl, buffer, isNewFile, saveOptions);
+                  hashes[respUrl] = result.hash;
+                  
                   if (isNewFile) {
                     urlResults.new++;
                     results.newFiles++;
                     statusMessages.new.push(respUrl);
                     
-                    // Store new file summary for organized display
-                    if (result.diffInfo && result.diffInfo.isNewFile) {
-                      statusMessages.changeSummaries.push({
-                        url: respUrl,
-                        diffInfo: result.diffInfo
-                      });
-                    }
+                    // No need to store summaries for new files - they clutter output
                     
                     // Add to batch for Discord notification
                     if (discordNotifier && discordNotifier.enabled) {
@@ -320,16 +409,6 @@ export default async function runCrawler(options) {
                     results.changedFiles++;
                     statusMessages.changed.push(respUrl);
                   }
-                  
-                  // Save file with diff analysis and new code preview
-                  const saveOptions = {
-                    quiet: quiet,
-                    showCodePreview: showCodePreview,
-                    maxLines: maxLines
-                  };
-                  
-                  const result = saveJSFile(domain, respUrl, buffer, isNewFile, saveOptions);
-                  hashes[respUrl] = result.hash;
                   
                   // Count new code sections and send Discord notification for changes
                   if (result.diffInfo && result.diffInfo.newCodeSections) {
@@ -469,22 +548,16 @@ export default async function runCrawler(options) {
               log.muted(`${statusMessages.filtered.length} files filtered`);
             }
             
-            // Show change summaries for modified and new files
-            if (statusMessages.changeSummaries.length > 0) {
-              statusMessages.changeSummaries.forEach(summary => {
+            // Show change summaries ONLY for modified files (not new files)
+            const modifiedSummaries = statusMessages.changeSummaries.filter(summary => !summary.diffInfo.isNewFile);
+            if (modifiedSummaries.length > 0) {
+              modifiedSummaries.forEach(summary => {
                 const diffInfo = summary.diffInfo;
                 log.separator();
-                
-                if (diffInfo.isNewFile) {
-                  log.info(`New File Summary`);
-                  log.muted(`File: ${formatFileSize(diffInfo.fileSize)} | Lines: ${diffInfo.totalLines}`);
-                  log.muted(`First-time discovery of this JavaScript file`);
-                } else {
-                  log.info(`Change Summary`);
-                  log.muted(`File: ${formatFileSize(diffInfo.fileSize)} | Lines: ${diffInfo.totalLines}`);
-                  log.muted(`Added: ${diffInfo.addedLines} | Removed: ${diffInfo.removedLines}`);
-                  log.muted(`New sections: ${diffInfo.newCodeSections.raw} raw, ${diffInfo.newCodeSections.beautified} beautified`);
-                }
+                log.info(`Change Summary`);
+                log.muted(`File: ${formatFileSize(diffInfo.fileSize)} | Lines: ${diffInfo.totalLines}`);
+                log.muted(`Added: ${diffInfo.addedLines} | Removed: ${diffInfo.removedLines}`);
+                log.muted(`New sections: ${diffInfo.newCodeSections.raw} raw, ${diffInfo.newCodeSections.beautified} beautified`);
                 
                 if (diffInfo.savedFiles) {
                   log.muted(`Files saved:`);
