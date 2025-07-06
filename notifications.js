@@ -116,7 +116,7 @@ export class DiscordNotifier {
     // Add changed files summary
     if (changedFiles.length > 0) {
       const fileList = changedFiles.slice(0, 5).map(file => {
-        const fileName = file.url.split('/').pop() || 'unknown.js';
+        const fileName = file.url || 'unknown.js';
         const changes = `+${file.addedLines}/-${file.removedLines}`;
         return `• **${fileName}** (${changes} lines)`;
       }).join('\n');
