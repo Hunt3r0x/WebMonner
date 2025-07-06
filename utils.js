@@ -138,6 +138,11 @@ export const log = {
     console.log('');
   },
 
+  // Clean section divider
+  divider: () => {
+    console.log(colors.muted('  ' + '─'.repeat(78)));
+  },
+
   // Minimal progress indicator
   progress: (text) => {
     console.log(colors.info(`  [INFO] ${text}`));
