@@ -146,6 +146,11 @@ export const log = {
   // Minimal progress indicator
   progress: (text) => {
     console.log(colors.info(`  [INFO] ${text}`));
+  },
+
+  // Debug logging
+  debug: (text) => {
+    console.log(colors.dim(`  [DEBUG] ${text}`));
   }
 };
 
