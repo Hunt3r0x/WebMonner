@@ -17,12 +17,13 @@ program
   .option('--header <header...>', 'Custom headers, e.g., "Cookie: sessionid=abc123"')
   .option('--live', 'Enable live monitoring (runs continuously)')
   .option('--interval <seconds>', 'Monitoring interval in seconds (default: 30)', '30')
-  .option('--include-domain <pattern...>', 'Only monitor JS files from domains matching these patterns (e.g., *.felixforus.ca)')
-  .option('--exclude-domain <pattern...>', 'Exclude JS files from domains matching these patterns')
-  .option('--include-url <pattern...>', 'Only monitor JS files matching these URL patterns')
-  .option('--exclude-url <pattern...>', 'Exclude JS files matching these URL patterns')
+  .option('--include-domain <pattern...>', 'Only monitor JS files from domains matching these patterns (comma-separated or multiple flags)')
+  .option('--exclude-domain <pattern...>', 'Exclude JS files from domains matching these patterns (comma-separated or multiple flags)')
+  .option('--include-url <pattern...>', 'Only monitor JS files matching these URL patterns (comma-separated or multiple flags)')
+  .option('--exclude-url <pattern...>', 'Exclude JS files matching these URL patterns (comma-separated or multiple flags)')
   .option('--quiet', 'Reduce output verbosity')
   .option('--verbose', 'Show all file statuses including unchanged files')
+  .option('--debug', 'Enable detailed debugging output')
   .option('--no-color', 'Disable colored output (for compatibility)')
   .option('--debug-colors', 'Show color support information and exit')
   .option('--no-code-preview', 'Disable showing new code sections in output')
@@ -135,12 +136,27 @@ if (opts.header) {
   });
 }
 
-// Create filters (convert single values to arrays for consistency)
+// Helper function to parse comma-separated and multiple flag patterns
+function parseFilterPatterns(input) {
+  if (!input) return null;
+  
+  // Handle both array (multiple flags) and string (single flag) inputs
+  const patterns = Array.isArray(input) ? input : [input];
+  
+  // Split comma-separated values and flatten
+  const flattened = patterns.flatMap(pattern => 
+    pattern.split(',').map(p => p.trim()).filter(p => p.length > 0)
+  );
+  
+  return flattened.length > 0 ? flattened : null;
+}
+
+// Create filters (support both multiple flags and comma-separated patterns)
 const filters = {
-  includeDomain: opts.includeDomain ? (Array.isArray(opts.includeDomain) ? opts.includeDomain : [opts.includeDomain]) : null,
-  excludeDomain: opts.excludeDomain ? (Array.isArray(opts.excludeDomain) ? opts.excludeDomain : [opts.excludeDomain]) : null,
-  includeUrl: opts.includeUrl ? (Array.isArray(opts.includeUrl) ? opts.includeUrl : [opts.includeUrl]) : null,
-  excludeUrl: opts.excludeUrl ? (Array.isArray(opts.excludeUrl) ? opts.excludeUrl : [opts.excludeUrl]) : null
+  includeDomain: parseFilterPatterns(opts.includeDomain),
+  excludeDomain: parseFilterPatterns(opts.excludeDomain),
+  includeUrl: parseFilterPatterns(opts.includeUrl),
+  excludeUrl: parseFilterPatterns(opts.excludeUrl)
 };
 
 const config = {
@@ -152,6 +168,7 @@ const config = {
   filters: filters,
   quiet: opts.quiet || false,
   verbose: opts.verbose || false,
+  debug: opts.debug || false,
   showCodePreview: opts.codePreview !== false,
   maxLines: parseInt(opts.maxLines) || 10,
   discordNotifier: discordNotifier,
