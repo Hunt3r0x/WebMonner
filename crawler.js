@@ -2,7 +2,7 @@ import puppeteer from 'puppeteer';
 import fs from 'fs';
 import { loginAndGetToken } from './auth.js';
 import { saveJSFile, generateChangeReport, generateNewCodeSummary } from './fileManager.js';
-import { log, summary, ProgressBar, formatUrl, formatFileSize, formatTime, formatDuration, showErrors } from './utils.js';
+import { log, summary, formatUrl, formatFileSize, formatTime, formatDuration, showErrors } from './utils.js';
 import crypto from 'crypto';
 
 // Pattern matching function for domain/URL filters
@@ -25,24 +25,32 @@ function shouldProcessJSFile(url, filters) {
     const urlObj = new URL(url);
     const domain = urlObj.hostname;
     
-    // Check include domain filter
-    if (filters.includeDomain && !matchesPattern(domain, filters.includeDomain)) {
-      return false;
+    // Check include domain filter - must match at least one pattern if specified
+    if (filters.includeDomain && filters.includeDomain.length > 0) {
+      if (!filters.includeDomain.some(pattern => matchesPattern(domain, pattern))) {
+        return false;
+      }
     }
     
-    // Check exclude domain filter
-    if (filters.excludeDomain && matchesPattern(domain, filters.excludeDomain)) {
-      return false;
+    // Check exclude domain filter - must not match any pattern if specified
+    if (filters.excludeDomain && filters.excludeDomain.length > 0) {
+      if (filters.excludeDomain.some(pattern => matchesPattern(domain, pattern))) {
+        return false;
+      }
     }
     
-    // Check include URL filter
-    if (filters.includeUrl && !matchesPattern(url, filters.includeUrl)) {
-      return false;
+    // Check include URL filter - must match at least one pattern if specified
+    if (filters.includeUrl && filters.includeUrl.length > 0) {
+      if (!filters.includeUrl.some(pattern => matchesPattern(url, pattern))) {
+        return false;
+      }
     }
     
-    // Check exclude URL filter
-    if (filters.excludeUrl && matchesPattern(url, filters.excludeUrl)) {
-      return false;
+    // Check exclude URL filter - must not match any pattern if specified
+    if (filters.excludeUrl && filters.excludeUrl.length > 0) {
+      if (filters.excludeUrl.some(pattern => matchesPattern(url, pattern))) {
+        return false;
+      }
     }
     
     return true;
@@ -105,18 +113,14 @@ export default async function runCrawler(options) {
   const { urls, authEnabled, customHeaders, liveMode, filters, quiet, verbose, showCodePreview, maxLines, discordNotifier } = options;
   
   let browser;
-  let progressBar;
   const scanStartTime = Date.now();
   
   try {
     const config = JSON.parse(fs.readFileSync('config.json', 'utf-8'));
     
     log.header('JavaScript Security Scan');
-    log.info(`Processing ${urls.length} URL(s)`);
+    log.info(`Processing ${urls.length} URL(s) at ${formatTime()}`);
     log.separator();
-    
-    // Initialize progress bar
-    progressBar = new ProgressBar(urls.length, 'Scanning');
     
     browser = await puppeteer.launch({
       headless: 'new',
@@ -146,8 +150,9 @@ export default async function runCrawler(options) {
     for (let i = 0; i < urls.length; i++) {
       const url = urls[i];
       
-      // Update progress at start of URL processing
-      progressBar.update(i, `${formatUrl(url)}`);
+      // Clean scan start indicator
+      log.header(`Scanning URL ${i + 1}/${urls.length}`);
+      log.info(`Target: ${formatUrl(url)}`);
       
       let page;
       let urlSuccess = false;
@@ -209,7 +214,8 @@ export default async function runCrawler(options) {
           changed: [],
           unchanged: [],
           filtered: [],
-          errors: []
+          errors: [],
+          changeSummaries: []
         };
 
         // Enhanced JavaScript detection patterns
@@ -292,6 +298,14 @@ export default async function runCrawler(options) {
                     results.newFiles++;
                     statusMessages.new.push(respUrl);
                     
+                    // Store new file summary for organized display
+                    if (result.diffInfo && result.diffInfo.isNewFile) {
+                      statusMessages.changeSummaries.push({
+                        url: respUrl,
+                        diffInfo: result.diffInfo
+                      });
+                    }
+                    
                     // Add to batch for Discord notification
                     if (discordNotifier && discordNotifier.enabled) {
                       discordNotifier.addToBatch('new_file', {
@@ -322,6 +336,12 @@ export default async function runCrawler(options) {
                     const sections = result.diffInfo.newCodeSections.raw + result.diffInfo.newCodeSections.beautified;
                     urlResults.newCodeSections += sections;
                     results.newCodeSections += sections;
+                    
+                    // Store change summary for organized display
+                    statusMessages.changeSummaries.push({
+                      url: respUrl,
+                      diffInfo: result.diffInfo
+                    });
                     
                     // Add to batch for Discord notification
                     if (!isNewFile && discordNotifier && discordNotifier.enabled) {
@@ -409,13 +429,11 @@ export default async function runCrawler(options) {
 
           results.urlsProcessed++;
           
-          // Final progress update for this URL
-          progressBar.update(i + 1, `${formatUrl(url)} (${urlResults.processed} files)`);
-          
           // Show organized URL results if not quiet
           if (!quiet && urlResults.found > 0) {
             log.separator();
-            log.info(`Analysis: ${formatUrl(url)}`);
+            log.header('Analysis Results');
+            log.info(`Target: ${formatUrl(url)}`);
             log.muted(`${urlResults.found} files found, ${urlResults.processed} analyzed, ${urlResults.filtered} filtered`);
             log.muted(`${urlResults.new} new, ${urlResults.changed} modified, ${urlResults.unchanged} unchanged`);
             if (urlResults.newCodeSections > 0) {
@@ -446,9 +464,41 @@ export default async function runCrawler(options) {
               }
             }
             
-            if (statusMessages.filtered.length >= 0) {
+            if (statusMessages.filtered.length > 0) {
               log.separator();
               log.muted(`${statusMessages.filtered.length} files filtered`);
+            }
+            
+            // Show change summaries for modified and new files
+            if (statusMessages.changeSummaries.length > 0) {
+              statusMessages.changeSummaries.forEach(summary => {
+                const diffInfo = summary.diffInfo;
+                log.separator();
+                
+                if (diffInfo.isNewFile) {
+                  log.info(`New File Summary`);
+                  log.muted(`File: ${formatFileSize(diffInfo.fileSize)} | Lines: ${diffInfo.totalLines}`);
+                  log.muted(`First-time discovery of this JavaScript file`);
+                } else {
+                  log.info(`Change Summary`);
+                  log.muted(`File: ${formatFileSize(diffInfo.fileSize)} | Lines: ${diffInfo.totalLines}`);
+                  log.muted(`Added: ${diffInfo.addedLines} | Removed: ${diffInfo.removedLines}`);
+                  log.muted(`New sections: ${diffInfo.newCodeSections.raw} raw, ${diffInfo.newCodeSections.beautified} beautified`);
+                }
+                
+                if (diffInfo.savedFiles) {
+                  log.muted(`Files saved:`);
+                  if (diffInfo.savedFiles.diffPath) {
+                    log.muted(`  • Diff: ${diffInfo.savedFiles.diffPath}`);
+                  }
+                  if (diffInfo.savedFiles.rawJSFile) {
+                    log.muted(`  • Raw JS: ${diffInfo.savedFiles.rawJSFile}`);
+                  }
+                  if (diffInfo.savedFiles.beautifiedJSFile) {
+                    log.muted(`  • Beautified JS: ${diffInfo.savedFiles.beautifiedJSFile}`);
+                  }
+                }
+              });
             }
             
             if (statusMessages.errors.length > 0) {
@@ -458,18 +508,24 @@ export default async function runCrawler(options) {
                 log.status('ERROR', `${formatUrl(error.url)} - ${error.message}`);
               });
             }
+            
+            // Clean section separator
+            log.divider();
           }
         } else {
           results.urlsFailed++;
-          progressBar.update(i + 1, `Failed: ${formatUrl(url)}`);
           
           // Show error messages for failed URLs
           if (!quiet && statusMessages.errors.length > 0) {
             log.separator();
-            log.muted(`Failed to process ${formatUrl(url)}:`);
+            log.header('Processing Failed');
+            log.info(`Target: ${formatUrl(url)}`);
             statusMessages.errors.forEach(error => {
               log.status('ERROR', `${formatUrl(error.url)} - ${error.message}`);
             });
+            
+            // Clean section separator
+            log.divider();
           }
         }
 
@@ -479,9 +535,6 @@ export default async function runCrawler(options) {
         results.errors++;
         results.urlsFailed++;
         results.errorDetails.push({ url, type: errorInfo.type, message: errorInfo.message });
-        
-        // Update progress even on error
-        progressBar.update(i + 1, `Error: ${formatUrl(url)}`);
         
         // Don't throw in live mode
         if (!liveMode && !errorInfo.recoverable) {
@@ -498,16 +551,13 @@ export default async function runCrawler(options) {
       }
     }
 
-    // Final progress update
-    progressBar.update(urls.length, `Analysis complete`);
-    
-    // Small delay to show completed progress
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    progressBar.finish();
-
     // Calculate scan duration
     const scanDuration = Math.round((Date.now() - scanStartTime) / 1000);
+    
+    // Clean completion message
+    log.separator();
+    log.header('Scan Complete');
+    log.success(`Processed ${results.urlsProcessed}/${urls.length} URLs in ${formatDuration(scanDuration)}`);
 
     // Generate final summary with error details
     const summaryData = {
