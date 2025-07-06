@@ -17,10 +17,10 @@ program
   .option('--header <header...>', 'Custom headers, e.g., "Cookie: sessionid=abc123"')
   .option('--live', 'Enable live monitoring (runs continuously)')
   .option('--interval <seconds>', 'Monitoring interval in seconds (default: 30)', '30')
-  .option('--include-domain <pattern>', 'Only monitor JS files from domains matching this pattern (e.g., *.felixforus.ca)')
-  .option('--exclude-domain <pattern>', 'Exclude JS files from domains matching this pattern')
-  .option('--include-url <pattern>', 'Only monitor JS files matching this URL pattern')
-  .option('--exclude-url <pattern>', 'Exclude JS files matching this URL pattern')
+  .option('--include-domain <pattern...>', 'Only monitor JS files from domains matching these patterns (e.g., *.felixforus.ca)')
+  .option('--exclude-domain <pattern...>', 'Exclude JS files from domains matching these patterns')
+  .option('--include-url <pattern...>', 'Only monitor JS files matching these URL patterns')
+  .option('--exclude-url <pattern...>', 'Exclude JS files matching these URL patterns')
   .option('--quiet', 'Reduce output verbosity')
   .option('--verbose', 'Show all file statuses including unchanged files')
   .option('--no-color', 'Disable colored output (for compatibility)')
@@ -135,12 +135,12 @@ if (opts.header) {
   });
 }
 
-// Create filters
+// Create filters (convert single values to arrays for consistency)
 const filters = {
-  includeDomain: opts.includeDomain || null,
-  excludeDomain: opts.excludeDomain || null,
-  includeUrl: opts.includeUrl || null,
-  excludeUrl: opts.excludeUrl || null
+  includeDomain: opts.includeDomain ? (Array.isArray(opts.includeDomain) ? opts.includeDomain : [opts.includeDomain]) : null,
+  excludeDomain: opts.excludeDomain ? (Array.isArray(opts.excludeDomain) ? opts.excludeDomain : [opts.excludeDomain]) : null,
+  includeUrl: opts.includeUrl ? (Array.isArray(opts.includeUrl) ? opts.includeUrl : [opts.includeUrl]) : null,
+  excludeUrl: opts.excludeUrl ? (Array.isArray(opts.excludeUrl) ? opts.excludeUrl : [opts.excludeUrl]) : null
 };
 
 const config = {
@@ -166,8 +166,14 @@ const configData = {
   'Authentication': config.authEnabled ? 'Enabled' : 'Disabled',
   'Live Mode': config.liveMode ? `Every ${opts.interval}s` : 'Single run',
   'Custom Headers': Object.keys(headers).length,
-  'Domain Filter': filters.includeDomain || filters.excludeDomain || 'None',
-  'URL Filter': filters.includeUrl || filters.excludeUrl || 'None',
+  'Domain Filter': [
+    ...(filters.includeDomain ? filters.includeDomain.map(f => `+${f}`) : []),
+    ...(filters.excludeDomain ? filters.excludeDomain.map(f => `-${f}`) : [])
+  ].join(', ') || 'None',
+  'URL Filter': [
+    ...(filters.includeUrl ? filters.includeUrl.map(f => `+${f}`) : []),
+    ...(filters.excludeUrl ? filters.excludeUrl.map(f => `-${f}`) : [])
+  ].join(', ') || 'None',
   'Output Mode': config.quiet ? 'Quiet' : config.verbose ? 'Verbose' : 'Normal',
   'Code Preview': config.showCodePreview ? 'Enabled' : 'Disabled',
   'Max Lines': config.maxLines,
@@ -184,7 +190,10 @@ if (config.liveMode && discordNotifier.enabled) {
   await discordNotifier.sendNotification('live_monitoring_start', {
     urlCount: targetUrls.length,
     interval: `${opts.interval}s`,
-    domainFilter: filters.includeDomain || filters.excludeDomain,
+    domainFilter: [
+      ...(filters.includeDomain ? filters.includeDomain.map(f => `+${f}`) : []),
+      ...(filters.excludeDomain ? filters.excludeDomain.map(f => `-${f}`) : [])
+    ].join(', ') || 'None',
     authEnabled: config.authEnabled
   });
 }
