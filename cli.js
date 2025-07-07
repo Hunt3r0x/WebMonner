@@ -7,6 +7,8 @@ import { showBanner, log, summary, SleepTimer, showColorSupport, getColorSupport
 import { DiscordNotifier } from './notifications.js';
 import { cleanupAllOldDiffs, getDomainDiskUsage } from './fileManager.js';
 import { codeAnalyzer } from './similarityAnalyzer.js';
+import { generateEndpointReport, getEndpointStorageStats, cleanupAllEndpointData } from './endpointExtractor.js';
+import { formatFileSize } from './utils.js';
 
 // Show professional banner
 showBanner();
@@ -37,7 +39,15 @@ program
   .option('--cleanup-diffs', 'Clean up old diff files and exit')
   .option('--analyze-similarity <domain>', 'Analyze file similarity for a specific domain and exit')
   .option('--analyze-all-domains', 'Analyze file similarity for all domains and exit')
-  .option('--similarity-threshold <number>', 'Similarity threshold (0.0-1.0, default: 0.7)', '0.7');
+  .option('--similarity-threshold <number>', 'Similarity threshold (0.0-1.0, default: 0.7)', '0.7')
+  .option('--extract-endpoints', 'Enable endpoint extraction from JavaScript files')
+  .option('--show-endpoints', 'Show extracted endpoints in output')
+  .option('--generate-endpoint-report <domain>', 'Generate comprehensive endpoint report for a domain and exit')
+  .option('--generate-all-endpoint-reports', 'Generate endpoint reports for all domains and exit')
+  .option('--cleanup-endpoints', 'Clean up excessive endpoint data and exit')
+  .option('--endpoint-storage-stats', 'Show endpoint storage statistics for all domains and exit')
+  .option('--max-endpoints <number>', 'Maximum endpoints to store per domain (default: 1000)', '1000')
+  .option('--max-endpoint-files <number>', 'Maximum endpoint files to keep per domain (default: 100)', '100');
 
 program.parse(process.argv);
 const opts = program.opts();
@@ -101,8 +111,8 @@ if (opts.analyzeSimilarity) {
       log.info(`  Unique Files: ${report.summary.singletons}`);
       
       if (report.summary.clusters > 0) {
-        log.info(`🔍 Found ${report.summary.clusters} groups of similar files`);
-        log.info(`These likely represent renamed/moved files with similar functionality`);
+        log.info(`File clusters identified: ${report.summary.clusters} groups`);
+        log.info(`Analysis suggests renamed or relocated files with similar functionality`);
       }
       
       // Clean up old fingerprints
@@ -175,11 +185,198 @@ if (opts.analyzeAllDomains) {
     log.separator();
     log.success(`Analysis complete: ${analyzedDomains} domains analyzed`);
     if (totalClusters > 0) {
-      log.info(`🔍 Total similar file groups found: ${totalClusters}`);
-      log.info(`These likely represent renamed/moved files with similar functionality`);
+      log.info(`Total file clusters identified: ${totalClusters}`);
+      log.info(`Results suggest renamed or relocated files with similar functionality`);
     }
   } catch (error) {
     log.error(`Similarity analysis failed: ${error.message}`);
+  }
+  process.exit(0);
+}
+
+// Handle endpoint report generation
+if (opts.generateEndpointReport) {
+  log.info(`Generating endpoint report for domain: ${opts.generateEndpointReport}`);
+  try {
+    const report = generateEndpointReport(opts.generateEndpointReport);
+    if (report) {
+      log.success(`Endpoint report generated: ${report.reportPath}`);
+      log.info(`Report Summary:`);
+      log.info(`  Total Endpoints: ${report.totalEndpoints}`);
+      log.info(`  High Confidence: ${report.byConfidence.HIGH?.length || 0}`);
+      log.info(`  Medium Confidence: ${report.byConfidence.MEDIUM?.length || 0}`);
+      log.info(`  Low Confidence: ${report.byConfidence.LOW?.length || 0}`);
+      
+      if (report.totalEndpoints > 0) {
+        log.info(`Unique endpoints discovered: ${report.totalEndpoints}`);
+        log.info(`Detailed analysis available in report file`);
+      }
+    } else {
+      log.warning(`No endpoint data found for domain: ${opts.generateEndpointReport}`);
+    }
+  } catch (error) {
+    log.error(`Endpoint report generation failed: ${error.message}`);
+  }
+  process.exit(0);
+}
+
+if (opts.generateAllEndpointReports) {
+  log.info('Generating endpoint reports for all domains...');
+  try {
+    // Find all domains with data
+    const dataDir = 'data';
+    if (!fs.existsSync(dataDir)) {
+      log.warning('No data directory found. Run a scan first.');
+      process.exit(1);
+    }
+    
+    const domains = fs.readdirSync(dataDir).filter(item => 
+      fs.statSync(`${dataDir}/${item}`).isDirectory()
+    );
+    
+    if (domains.length === 0) {
+      log.warning('No domains found in data directory.');
+      process.exit(1);
+    }
+    
+    log.info(`Found ${domains.length} domains to analyze`);
+    log.separator();
+    
+    let totalEndpoints = 0;
+    let processedDomains = 0;
+    
+    for (const domain of domains) {
+      try {
+        log.info(`Generating endpoint report for ${domain}...`);
+        const report = generateEndpointReport(domain);
+        if (report) {
+          log.success(`Report: ${report.reportPath}`);
+          log.muted(`  Endpoints: ${report.totalEndpoints} (H:${report.byConfidence.HIGH?.length || 0}, M:${report.byConfidence.MEDIUM?.length || 0}, L:${report.byConfidence.LOW?.length || 0})`);
+          
+          totalEndpoints += report.totalEndpoints;
+          processedDomains++;
+        } else {
+          log.muted(`  No endpoint data found for ${domain}`);
+        }
+      } catch (error) {
+        log.warning(`  Failed to generate report for ${domain}: ${error.message}`);
+      }
+    }
+    
+    log.separator();
+    log.success(`Report generation complete: ${processedDomains} domains processed`);
+    if (totalEndpoints > 0) {
+      log.info(`Total endpoints discovered: ${totalEndpoints}`);
+      log.info(`Review individual report files for detailed analysis`);
+    }
+  } catch (error) {
+    log.error(`Endpoint report generation failed: ${error.message}`);
+  }
+  process.exit(0);
+}
+
+// Handle endpoint cleanup
+if (opts.cleanupEndpoints) {
+  log.info('Cleaning up excessive endpoint data...');
+  try {
+    const result = cleanupAllEndpointData({
+      maxEndpointsPerDomain: parseInt(opts.maxEndpoints) || 1000,
+      maxFilesPerDomain: parseInt(opts.maxEndpointFiles) || 100,
+      quiet: opts.quiet
+    });
+    
+    if (result) {
+      log.success(`Cleanup complete - Processed ${result.domainsProcessed} domains`);
+      if (result.spaceSaved > 0) {
+        log.info(`Storage freed: ${formatFileSize(result.spaceSaved)}`);
+      }
+      
+      // Show stats for each domain
+      if (result.domains.length > 0 && !opts.quiet) {
+        log.separator();
+        log.header('Post-Cleanup Storage Statistics');
+        result.domains.forEach(stats => {
+          log.info(`Domain: ${stats.domain}`);
+          log.muted(`  Endpoints: ${stats.endpointCount}`);
+          log.muted(`  Files: ${stats.fileCount}`);
+          log.muted(`  Storage: ${formatFileSize(stats.totalSize)}`);
+          log.separator();
+        });
+      }
+    } else {
+      log.info('No endpoint data found or cleanup not required');
+    }
+  } catch (error) {
+    log.error(`Endpoint cleanup failed: ${error.message}`);
+  }
+  process.exit(0);
+}
+
+// Handle endpoint storage statistics
+if (opts.endpointStorageStats) {
+  log.info('Gathering endpoint storage statistics...');
+  try {
+    const dataDir = 'data';
+    if (!fs.existsSync(dataDir)) {
+      log.warning('No data directory found. Run a scan first.');
+      process.exit(1);
+    }
+    
+    const domains = fs.readdirSync(dataDir).filter(item => 
+      fs.statSync(`${dataDir}/${item}`).isDirectory() && 
+      fs.existsSync(`${dataDir}/${item}/endpoints`)
+    );
+    
+    if (domains.length === 0) {
+      log.warning('No domains with endpoint data found.');
+      process.exit(1);
+    }
+    
+    log.separator();
+    log.header('Endpoint Storage Statistics');
+    
+    let totalSize = 0;
+    let totalEndpoints = 0;
+    let totalFiles = 0;
+    
+    domains.forEach(domain => {
+      const stats = getEndpointStorageStats(domain);
+      if (stats) {
+        totalSize += stats.totalSize;
+        totalEndpoints += stats.endpointCount;
+        totalFiles += stats.fileCount;
+        
+        log.info(`Domain: ${domain}`);
+        log.muted(`  Endpoints: ${stats.endpointCount}`);
+        log.muted(`  Files: ${stats.fileCount}`);
+        log.muted(`  Storage: ${formatFileSize(stats.totalSize)}`);
+        log.muted(`  Average per endpoint: ${formatFileSize(stats.averageEndpointSize)}`);
+        log.separator();
+      }
+    });
+    
+    log.header('Overall Statistics');
+    log.info(`Domains: ${domains.length}`);
+    log.info(`Total Endpoints: ${totalEndpoints}`);
+    log.info(`Total Files: ${totalFiles}`);
+    log.info(`Total Storage: ${formatFileSize(totalSize)}`);
+    log.info(`Average per domain: ${formatFileSize(Math.round(totalSize / domains.length))}`);
+    
+    // Show warnings for large storage
+    if (totalSize > 100 * 1024 * 1024) { // 100MB
+      log.separator();
+      log.warning(`Large storage usage detected (${formatFileSize(totalSize)})`);
+      log.warning(`Consider running: node cli.js --cleanup-endpoints`);
+    }
+    
+    if (totalEndpoints > 10000) {
+      log.separator();
+      log.warning(`Large number of endpoints stored (${totalEndpoints})`);
+      log.warning(`Consider using --max-endpoints to limit storage`);
+    }
+    
+  } catch (error) {
+    log.error(`Failed to gather storage stats: ${error.message}`);
   }
   process.exit(0);
 }
@@ -281,7 +478,11 @@ const config = {
   discordNotifier: discordNotifier,
   saveDiff: opts.diff !== false,
   maxDiffFiles: parseInt(opts.maxDiffFiles) || 50,
-  cleanupOldDiffs: opts.cleanup !== false
+  cleanupOldDiffs: opts.cleanup !== false,
+  extractEndpoints: opts.extractEndpoints || false,
+  showEndpoints: opts.showEndpoints || false,
+  maxEndpointsPerDomain: parseInt(opts.maxEndpoints) || 1000,
+  maxEndpointFilesPerDomain: parseInt(opts.maxEndpointFiles) || 100
 };
 
 // Show configuration summary
@@ -304,7 +505,9 @@ const configData = {
   'Discord Alerts': opts.discordWebhook ? 'Enabled' : 'Disabled',
   'Diff Storage': config.saveDiff ? 'Enabled' : 'Disabled',
   'Max Diff Files': config.maxDiffFiles,
-  'Auto Cleanup': config.cleanupOldDiffs ? 'Enabled' : 'Disabled'
+  'Auto Cleanup': config.cleanupOldDiffs ? 'Enabled' : 'Disabled',
+  'Extract Endpoints': config.extractEndpoints ? 'Enabled' : 'Disabled',
+  'Show Endpoints': config.showEndpoints ? 'Enabled' : 'Disabled'
 };
 
 summary.create('Configuration', configData);
