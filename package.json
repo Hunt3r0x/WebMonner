@@ -11,7 +11,10 @@
     "chalk": "^5.4.1",
     "commander": "^11.0.0",
     "diff": "^5.1.0",
+    "escodegen": "^2.1.0",
+    "esprima": "^4.0.1",
     "js-beautify": "^1.15.0",
+    "openai": "^5.8.2",
     "puppeteer": "^21.3.8"
   }
 }
