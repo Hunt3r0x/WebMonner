@@ -84,11 +84,15 @@ export class DiscordNotifier {
     this.clearBatch();
   }
 
-  // New: Create batched summary embed
+  // New: Create batched summary embed with domain organization
   createBatchedSummaryEmbed(newFiles, changedFiles, errors, endpointsFound = []) {
     const timestamp = new Date().toISOString();
     const totalChanges = newFiles.length + changedFiles.length;
     const totalEndpoints = endpointsFound.reduce((sum, ep) => sum + ep.newEndpoints, 0);
+    
+    // Group data by domain
+    const domainGroups = this.groupDataByDomain(newFiles, changedFiles, errors, endpointsFound);
+    const domainCount = Object.keys(domainGroups).length;
     
     let title = '';
     let color = 0x808080; // Gray default
@@ -98,98 +102,114 @@ export class DiscordNotifier {
       if (totalChanges > 0) parts.push(`${totalChanges} Change${totalChanges > 1 ? 's' : ''}`);
       if (totalEndpoints > 0) parts.push(`${totalEndpoints} Endpoint${totalEndpoints > 1 ? 's' : ''}`);
       
-      title = `📊 Scan Summary - ${parts.join(', ')} Detected`;
+      title = `📊 Scan Summary - ${parts.join(', ')} on ${domainCount} Domain${domainCount > 1 ? 's' : ''}`;
       color = 0x00ff00; // Green for changes/endpoints
     } else if (errors.length > 0) {
-      title = `❌ Scan Summary - ${errors.length} Error${errors.length > 1 ? 's' : ''} Occurred`;
+      title = `❌ Scan Summary - ${errors.length} Error${errors.length > 1 ? 's' : ''} on ${domainCount} Domain${domainCount > 1 ? 's' : ''}`;
       color = 0xff0000; // Red for errors only
     }
 
     const fields = [];
 
-    // Add new files summary
-    if (newFiles.length > 0) {
-      const fileList = newFiles.slice(0, 5).map(file => {
-        const fileName = file.url.split('/').pop() || 'unknown.js';
-        return `• **${fileName}** (${file.lines} lines)`;
+    // Add domain overview section
+    if (domainCount > 0) {
+      const domainOverview = Object.entries(domainGroups).map(([domain, data]) => {
+        const domainChanges = data.newFiles.length + data.changedFiles.length;
+        const domainEndpoints = data.endpointsFound.reduce((sum, ep) => sum + ep.newEndpoints, 0);
+        const domainErrors = data.errors.length;
+        
+        let domainSummary = `**${domain}**`;
+        const summaryParts = [];
+        if (domainChanges > 0) summaryParts.push(`${domainChanges} file${domainChanges > 1 ? 's' : ''}`);
+        if (domainEndpoints > 0) summaryParts.push(`${domainEndpoints} endpoint${domainEndpoints > 1 ? 's' : ''}`);
+        if (domainErrors > 0) summaryParts.push(`${domainErrors} error${domainErrors > 1 ? 's' : ''}`);
+        
+        if (summaryParts.length > 0) {
+          domainSummary += ` - ${summaryParts.join(', ')}`;
+        }
+        
+        return domainSummary;
       }).join('\n');
       
-      const moreFiles = newFiles.length > 5 ? `\n+ ${newFiles.length - 5} more files...` : '';
-      
       fields.push({
-        name: `🆕 New Files (${newFiles.length})`,
-        value: fileList + moreFiles,
+        name: `🌐 Domain Overview (${domainCount} domains)`,
+        value: domainOverview,
         inline: false
       });
     }
 
-    // Add changed files summary
-    if (changedFiles.length > 0) {
-      const fileList = changedFiles.slice(0, 5).map(file => {
-        const fileName = file.url || 'unknown.js';
-        const changes = `+${file.addedLines}/-${file.removedLines}`;
-        return `• **${fileName}** (${changes} lines)`;
-      }).join('\n');
+    // Add domain-specific sections
+    Object.entries(domainGroups).forEach(([domain, data]) => {
+      const domainChanges = data.newFiles.length + data.changedFiles.length;
+      const domainEndpoints = data.endpointsFound.reduce((sum, ep) => sum + ep.newEndpoints, 0);
+      const domainErrors = data.errors.length;
       
-      const moreFiles = changedFiles.length > 5 ? `\n+ ${changedFiles.length - 5} more files...` : '';
-      
-      fields.push({
-        name: `🔄 Changed Files (${changedFiles.length})`,
-        value: fileList + moreFiles,
-        inline: false
-      });
-    }
+      if (domainChanges > 0 || domainEndpoints > 0 || domainErrors > 0) {
+        const domainSections = [];
+        
+        // New files for this domain
+        if (data.newFiles.length > 0) {
+          const fileList = data.newFiles.slice(0, 3).map(file => {
+            const fileName = file.url.split('/').pop() || 'unknown.js';
+            const shortName = fileName.length > 20 ? fileName.substring(0, 17) + '...' : fileName;
+            return `• **${shortName}** (${file.lines} lines)`;
+          }).join('\n');
+          const moreFiles = data.newFiles.length > 3 ? `\n+ ${data.newFiles.length - 3} more...` : '';
+          domainSections.push(`🆕 **New Files (${data.newFiles.length}):**\n${fileList}${moreFiles}`);
+        }
+        
+        // Changed files for this domain
+        if (data.changedFiles.length > 0) {
+          const fileList = data.changedFiles.slice(0, 3).map(file => {
+            const fileName = file.url.split('/').pop() || 'unknown.js';
+            const shortName = fileName.length > 20 ? fileName.substring(0, 17) + '...' : fileName;
+            const changes = `+${file.addedLines}/-${file.removedLines}`;
+            return `• **${shortName}** (${changes})`;
+          }).join('\n');
+          const moreFiles = data.changedFiles.length > 3 ? `\n+ ${data.changedFiles.length - 3} more...` : '';
+          domainSections.push(`🔄 **Changed Files (${data.changedFiles.length}):**\n${fileList}${moreFiles}`);
+        }
+        
+        // Endpoints for this domain
+        if (data.endpointsFound.length > 0) {
+          const endpointList = data.endpointsFound.slice(0, 2).map(epData => {
+            const fileName = epData.url.split('/').pop() || 'unknown.js';
+            const shortName = fileName.length > 20 ? fileName.substring(0, 17) + '...' : fileName;
+            const confidence = `H:${epData.highConfidence} M:${epData.mediumConfidence} L:${epData.lowConfidence}`;
+            return `• **${shortName}** - ${epData.newEndpoints} endpoints (${confidence})`;
+          }).join('\n');
+          const moreEndpoints = data.endpointsFound.length > 2 ? `\n+ ${data.endpointsFound.length - 2} more...` : '';
+          domainSections.push(`🎯 **Endpoints (${domainEndpoints}):**\n${endpointList}${moreEndpoints}`);
+        }
+        
+        // Errors for this domain
+        if (data.errors.length > 0) {
+          const errorList = data.errors.slice(0, 2).map(error => {
+            const fileName = error.url ? error.url.split('/').pop() : 'Unknown';
+            const shortName = fileName.length > 20 ? fileName.substring(0, 17) + '...' : fileName;
+            const shortMessage = error.message.length > 50 ? error.message.substring(0, 47) + '...' : error.message;
+            return `• **${shortName}**: ${shortMessage}`;
+          }).join('\n');
+          const moreErrors = data.errors.length > 2 ? `\n+ ${data.errors.length - 2} more...` : '';
+          domainSections.push(`❌ **Errors (${data.errors.length}):**\n${errorList}${moreErrors}`);
+        }
+        
+        // Add domain field
+        fields.push({
+          name: `📍 ${domain}`,
+          value: domainSections.join('\n\n'),
+          inline: false
+        });
+      }
+    });
 
-    // Add endpoints summary
-    if (endpointsFound.length > 0) {
-      const endpointList = endpointsFound.slice(0, 8).map(epData => {
-        const fileName = epData.url.split('/').pop() || 'unknown.js';
-        const shortFileName = fileName.length > 25 ? fileName.substring(0, 22) + '...' : fileName;
-        const confidence = `H:${epData.highConfidence} M:${epData.mediumConfidence} L:${epData.lowConfidence}`;
-        return `• **${shortFileName}** - ${epData.newEndpoints} new (${confidence})`;
-      }).join('\n');
-      
-      const moreEndpoints = endpointsFound.length > 8 ? `\n+ ${endpointsFound.length - 8} more files with endpoints...` : '';
-      
-      // Calculate totals for the field name
-      const totalHighConfidence = endpointsFound.reduce((sum, ep) => sum + ep.highConfidence, 0);
-      const totalMediumConfidence = endpointsFound.reduce((sum, ep) => sum + ep.mediumConfidence, 0);
-      const totalLowConfidence = endpointsFound.reduce((sum, ep) => sum + ep.lowConfidence, 0);
-      
-      fields.push({
-        name: `🎯 API Endpoints Discovered (${totalEndpoints} total)`,
-        value: endpointList + moreEndpoints + 
-               `\n\n**Confidence Breakdown:** H:${totalHighConfidence} M:${totalMediumConfidence} L:${totalLowConfidence}`,
-        inline: false
-      });
-    }
-
-    // Add errors summary
-    if (errors.length > 0) {
-      const errorList = errors.slice(0, 3).map(error => {
-        const url = error.url ? new URL(error.url).pathname.split('/').pop() : 'Unknown';
-        return `• **${url}**: ${error.message.substring(0, 100)}${error.message.length > 100 ? '...' : ''}`;
-      }).join('\n');
-      
-      const moreErrors = errors.length > 3 ? `\n+ ${errors.length - 3} more errors...` : '';
-      
-      fields.push({
-        name: `❌ Errors (${errors.length})`,
-        value: errorList + moreErrors,
-        inline: false
-      });
-    }
-
-    // Add summary stats
+    // Add summary statistics
     if (totalChanges > 0 || totalEndpoints > 0) {
       const totalLines = [...newFiles, ...changedFiles].reduce((sum, file) => {
         return sum + (file.addedLines || file.lines || 0);
       }, 0);
       
-      const allData = [...newFiles, ...changedFiles, ...endpointsFound];
-      const domains = new Set(allData.map(item => item.domain));
-      
-      let statsValue = `**Scan Time:** ${timestamp.split('T')[1].split('.')[0]}\n**Domains Affected:** ${domains.size}`;
+      let statsValue = `**Scan Time:** ${timestamp.split('T')[1].split('.')[0]}\n**Domains Monitored:** ${domainCount}`;
       
       if (totalLines > 0) {
         statsValue += `\n**Total Lines Added:** ${totalLines}`;
@@ -214,10 +234,9 @@ export class DiscordNotifier {
 
     let description = '';
     if (totalChanges > 0 || totalEndpoints > 0) {
-      const parts = [];
-      if (totalChanges > 0) parts.push('JavaScript files have been updated');
-      if (totalEndpoints > 0) parts.push('new API endpoints discovered');
-      description = `${parts.join(' and ')}. Check the details below.`;
+      const domainList = Object.keys(domainGroups).slice(0, 3).join(', ');
+      const moreDomains = domainCount > 3 ? ` and ${domainCount - 3} more` : '';
+      description = `Activity detected on: **${domainList}${moreDomains}**`;
     } else {
       description = 'Scan completed with errors. No changes or endpoints detected.';
     }
@@ -227,9 +246,61 @@ export class DiscordNotifier {
       description,
       color,
       fields,
-      footer: { text: 'WebMonner Summary' },
+      footer: { text: 'WebMonner Domain Summary' },
       timestamp
     };
+  }
+
+  // Helper method to group data by domain
+  groupDataByDomain(newFiles, changedFiles, errors, endpointsFound) {
+    const domainGroups = {};
+    
+    // Group new files by domain
+    newFiles.forEach(file => {
+      const domain = file.domain || 'unknown';
+      if (!domainGroups[domain]) {
+        domainGroups[domain] = { newFiles: [], changedFiles: [], errors: [], endpointsFound: [] };
+      }
+      domainGroups[domain].newFiles.push(file);
+    });
+    
+    // Group changed files by domain
+    changedFiles.forEach(file => {
+      const domain = file.domain || 'unknown';
+      if (!domainGroups[domain]) {
+        domainGroups[domain] = { newFiles: [], changedFiles: [], errors: [], endpointsFound: [] };
+      }
+      domainGroups[domain].changedFiles.push(file);
+    });
+    
+    // Group errors by domain
+    errors.forEach(error => {
+      const domain = error.domain || (error.url ? this.getDomainFromUrl(error.url) : 'unknown');
+      if (!domainGroups[domain]) {
+        domainGroups[domain] = { newFiles: [], changedFiles: [], errors: [], endpointsFound: [] };
+      }
+      domainGroups[domain].errors.push(error);
+    });
+    
+    // Group endpoints by domain
+    endpointsFound.forEach(endpoint => {
+      const domain = endpoint.domain || 'unknown';
+      if (!domainGroups[domain]) {
+        domainGroups[domain] = { newFiles: [], changedFiles: [], errors: [], endpointsFound: [] };
+      }
+      domainGroups[domain].endpointsFound.push(endpoint);
+    });
+    
+    return domainGroups;
+  }
+
+  // Helper method to get domain from URL
+  getDomainFromUrl(url) {
+    try {
+      return new URL(url).hostname;
+    } catch {
+      return 'unknown';
+    }
   }
 
   // New: Clear batched changes
@@ -375,90 +446,94 @@ export class DiscordNotifier {
 
   createEmbed(type, data) {
     const timestamp = new Date().toISOString();
+    const domain = data.domain || 'unknown';
 
     switch (type) {
       case 'new_file':
         const newFileName = data.url.split('/').pop() || 'unknown.js';
         return {
-          title: '🆕 New JavaScript File Detected',
-          description: `New file found: **${newFileName}**`,
+          title: `🆕 New JS File on ${domain}`,
+          description: `New JavaScript file detected: **${newFileName}**`,
           color: 0x00ff00, // Green
           fields: [
-            { name: 'File Name', value: `\`${newFileName}\``, inline: true },
-            { name: 'URL', value: `\`${data.url}\``, inline: false },
-            { name: 'Domain', value: data.domain, inline: true },
-            { name: 'File Size', value: data.fileSize, inline: true },
-            { name: 'Lines of Code', value: data.lines.toString(), inline: true }
+            { name: '🌐 Domain', value: `**${domain}**`, inline: true },
+            { name: '📁 File Name', value: `\`${newFileName}\``, inline: true },
+            { name: '📏 Lines of Code', value: data.lines.toString(), inline: true },
+            { name: '📊 File Size', value: data.fileSize, inline: true },
+            { name: '🔗 URL', value: `\`${data.url}\``, inline: false }
           ],
-          footer: { text: 'WebMonner Alert' },
+          footer: { text: 'WebMonner Domain Alert' },
           timestamp
         };
 
       case 'file_changed':
         const fileName = data.url.split('/').pop() || 'unknown.js';
+        const changeType = data.addedLines > data.removedLines ? 'expanded' : 
+                          data.addedLines < data.removedLines ? 'reduced' : 'modified';
         return {
-          title: '🔄 JavaScript File Changed',
-          description: `Changes detected in: **${fileName}**`,
+          title: `🔄 JS File Changed on ${domain}`,
+          description: `JavaScript file **${fileName}** has been ${changeType}`,
           color: 0xffa500, // Orange
           fields: [
-            { name: 'File Name', value: `\`${fileName}\``, inline: true },
-            { name: 'URL', value: `\`${data.url}\``, inline: false },
-            { name: 'Domain', value: data.domain, inline: true },
-            { name: 'Lines Added', value: data.addedLines.toString(), inline: true },
-            { name: 'Lines Removed', value: data.removedLines.toString(), inline: true },
-            { name: 'File Size', value: data.fileSize, inline: true },
-            { name: 'Total Lines', value: data.totalLines.toString(), inline: true },
-            { name: 'New Code Sections', value: data.newCodeSections.toString(), inline: true }
+            { name: '🌐 Domain', value: `**${domain}**`, inline: true },
+            { name: '📁 File Name', value: `\`${fileName}\``, inline: true },
+            { name: '📈 Changes', value: `+${data.addedLines}/-${data.removedLines}`, inline: true },
+            { name: '📊 File Size', value: data.fileSize, inline: true },
+            { name: '📏 Total Lines', value: data.totalLines.toString(), inline: true },
+            { name: '🔧 Code Sections', value: data.newCodeSections.toString(), inline: true },
+            { name: '🔗 URL', value: `\`${data.url}\``, inline: false }
           ],
-          footer: { text: 'WebMonner Alert' },
+          footer: { text: 'WebMonner Domain Alert' },
           timestamp
         };
 
       case 'scan_complete':
         return {
-          title: '✅ Scan Complete',
-          description: `Monitoring scan finished successfully.`,
+          title: '✅ Multi-Domain Scan Complete',
+          description: `Monitoring scan finished across all domains.`,
           color: 0x0099ff, // Blue
           fields: [
-            { name: 'URLs Processed', value: data.urlsProcessed.toString(), inline: true },
-            { name: 'JS Files Found', value: data.totalFiles.toString(), inline: true },
-            { name: 'New Files', value: data.newFiles.toString(), inline: true },
-            { name: 'Changed Files', value: data.changedFiles.toString(), inline: true },
-            { name: 'Filtered Files', value: data.filteredFiles.toString(), inline: true },
-            { name: 'Errors', value: data.errors.toString(), inline: true },
-            { name: 'Scan Duration', value: data.duration, inline: true },
-            { name: 'Next Scan', value: data.nextScan || 'Manual', inline: true }
+            { name: '🌐 URLs Processed', value: data.urlsProcessed.toString(), inline: true },
+            { name: '📁 JS Files Found', value: data.totalFiles.toString(), inline: true },
+            { name: '🆕 New Files', value: data.newFiles.toString(), inline: true },
+            { name: '🔄 Changed Files', value: data.changedFiles.toString(), inline: true },
+            { name: '🚫 Filtered Files', value: data.filteredFiles.toString(), inline: true },
+            { name: '❌ Errors', value: data.errors.toString(), inline: true },
+            { name: '⏱️ Scan Duration', value: data.duration, inline: true },
+            { name: '⏰ Next Scan', value: data.nextScan || 'Manual', inline: true }
           ],
-          footer: { text: 'WebMonner Report' },
+          footer: { text: 'WebMonner Domain Report' },
           timestamp
         };
 
       case 'error':
+        const errorDomain = data.domain || (data.url ? this.getDomainFromUrl(data.url) : 'unknown');
         return {
-          title: '❌ Monitoring Error',
-          description: `An error occurred during monitoring.`,
+          title: `❌ Error on ${errorDomain}`,
+          description: `Monitoring error occurred on domain: **${errorDomain}**`,
           color: 0xff0000, // Red
           fields: [
-            { name: 'Error Type', value: data.type, inline: true },
-            { name: 'URL', value: data.url || 'N/A', inline: true },
-            { name: 'Message', value: `\`${data.message}\``, inline: false }
+            { name: '🌐 Domain', value: `**${errorDomain}**`, inline: true },
+            { name: '⚠️ Error Type', value: data.type, inline: true },
+            { name: '🔗 URL', value: data.url ? `\`${data.url}\`` : 'N/A', inline: false },
+            { name: '📝 Message', value: `\`${data.message}\``, inline: false }
           ],
-          footer: { text: 'WebMonner Error' },
+          footer: { text: 'WebMonner Domain Error' },
           timestamp
         };
 
       case 'live_monitoring_start':
         return {
           title: '🔴 Live Monitoring Started',
-          description: `WebMonner is now actively monitoring JavaScript files.`,
+          description: `WebMonner is now actively monitoring JavaScript files across domains.`,
           color: 0x9932cc, // Purple
           fields: [
-            { name: 'URLs Monitored', value: data.urlCount.toString(), inline: true },
-            { name: 'Scan Interval', value: data.interval, inline: true },
-            { name: 'Domain Filter', value: data.domainFilter || 'None', inline: true },
-            { name: 'Authentication', value: data.authEnabled ? 'Enabled' : 'Disabled', inline: true }
+            { name: '🌐 URLs Monitored', value: data.urlCount.toString(), inline: true },
+            { name: '⏱️ Scan Interval', value: data.interval, inline: true },
+            { name: '🔍 Domain Filter', value: data.domainFilter || 'All Domains', inline: true },
+            { name: '🔐 Authentication', value: data.authEnabled ? 'Enabled' : 'Disabled', inline: true }
           ],
-          footer: { text: 'WebMonner Status' },
+          footer: { text: 'WebMonner Domain Monitor' },
           timestamp
         };
 
@@ -467,7 +542,7 @@ export class DiscordNotifier {
           title: '📢 WebMonner Notification',
           description: data.message || 'Unknown notification type',
           color: 0x808080, // Gray
-          footer: { text: 'WebMonner' },
+          footer: { text: 'WebMonner Domain System' },
           timestamp
         };
     }
@@ -551,8 +626,6 @@ export class DiscordNotifier {
       console.error(`Discord code preview failed: ${error.message}`);
     }
   }
-
-
 }
 
 // Helper function to extract domain from URL
