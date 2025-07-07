@@ -811,8 +811,18 @@ export function saveEndpoints(domain, fileUrl, endpoints, options = {}) {
     return { saved: false, count: 0, newCount: 0, summary: { total: 0, high_confidence: 0, medium_confidence: 0, low_confidence: 0, by_method: {}, by_category: {} } };
   }
   
-  if (debug && filteredEndpoints.length !== endpoints.length) {
-    console.log(`[ENDPOINT FILTER] Filtered endpoints from ${endpoints.length} to ${filteredEndpoints.length} based on domain rules`);
+  // Apply clean endpoint filtering BEFORE storing and reporting counts
+  const cleanFilteredEndpoints = filteredEndpoints.filter(ep => isCleanEndpoint(ep.url));
+  
+  if (cleanFilteredEndpoints.length === 0) {
+    if (debug && filteredEndpoints.length > 0) {
+      console.log(`[ENDPOINT FILTER] All ${filteredEndpoints.length} domain-filtered endpoints rejected as unclean`);
+    }
+    return { saved: false, count: 0, newCount: 0, summary: { total: 0, high_confidence: 0, medium_confidence: 0, low_confidence: 0, by_method: {}, by_category: {} } };
+  }
+  
+  if (debug && cleanFilteredEndpoints.length !== endpoints.length) {
+    console.log(`[ENDPOINT FILTER] Filtered endpoints: ${endpoints.length} raw → ${filteredEndpoints.length} domain-filtered → ${cleanFilteredEndpoints.length} clean`);
   }
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -837,7 +847,7 @@ export function saveEndpoints(domain, fileUrl, endpoints, options = {}) {
   }
   
   // Prepare new endpoints with metadata (optimized storage) - use filtered endpoints
-  const newEndpoints = filteredEndpoints.map(endpoint => ({
+  const newEndpoints = cleanFilteredEndpoints.map(endpoint => ({
     url: endpoint.url,
     method: endpoint.method,
     confidence: endpoint.confidence,
@@ -900,7 +910,7 @@ export function saveEndpoints(domain, fileUrl, endpoints, options = {}) {
   allEndpoints.push(...genuinelyNewEndpoints);
   fs.writeFileSync(allEndpointsPath, JSON.stringify(allEndpoints, null, 2));
   
-  // Create simple text file with all endpoints (last line = newest endpoint)
+  // Create simple text file with all endpoints (newest at bottom)
   createEndpointsTextFile(domain, allEndpoints);
   
   // Clean up unnecessary files
@@ -1183,8 +1193,8 @@ function createEndpointsTextFile(domain, endpoints) {
       return timeA - timeB;
     });
     
-    // Filter out junk endpoints and keep only clean ones
-    const cleanEndpoints = sortedEndpoints.filter(ep => isCleanEndpoint(ep.url));
+    // No need to filter again - clean filtering is now done in saveEndpoints()
+    const cleanEndpoints = sortedEndpoints;
     
     // Format as simple text lines
     const lines = cleanEndpoints.map(ep => {
@@ -1197,7 +1207,7 @@ function createEndpointsTextFile(domain, endpoints) {
     // Add header
     const header = [
       `# Endpoints for ${domain}`,
-      `# Total: ${cleanEndpoints.length} clean endpoints (${endpoints.length} raw)`,
+      `# Total: ${cleanEndpoints.length} clean endpoints`,
       `# Updated: ${new Date().toISOString()}`,
       `# Format: METHOD URL [CONFIDENCE]`,
       `# Last line = newest endpoint`,
