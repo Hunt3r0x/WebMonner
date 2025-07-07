@@ -459,6 +459,7 @@ export default async function runCrawler(options) {
                       const endpointResult = saveEndpoints(domain, respUrl, extractedEndpoints, { 
                         quiet,
                         debug,
+                        filters,
                         maxEndpointsPerDomain: maxEndpointsPerDomain || 1000,
                         maxFilesPerDomain: maxEndpointFilesPerDomain || 100
                       });

@@ -792,12 +792,27 @@ export function saveEndpoints(domain, fileUrl, endpoints, options = {}) {
   const { 
     quiet = false, 
     debug = false,
+    filters = {},
     maxEndpointsPerDomain = 1000,
     maxFilesPerDomain = 100
   } = options;
   
   if (!endpoints || endpoints.length === 0) {
     return { saved: false, count: 0, newCount: 0, summary: { total: 0, high_confidence: 0, medium_confidence: 0, low_confidence: 0, by_method: {}, by_category: {} } };
+  }
+
+  // Filter endpoints based on CLI domain filters
+  const filteredEndpoints = filterEndpointsByDomain(endpoints, filters, debug);
+  
+  if (filteredEndpoints.length === 0) {
+    if (debug && endpoints.length > 0) {
+      console.log(`[ENDPOINT FILTER] All ${endpoints.length} endpoints filtered out by domain rules`);
+    }
+    return { saved: false, count: 0, newCount: 0, summary: { total: 0, high_confidence: 0, medium_confidence: 0, low_confidence: 0, by_method: {}, by_category: {} } };
+  }
+  
+  if (debug && filteredEndpoints.length !== endpoints.length) {
+    console.log(`[ENDPOINT FILTER] Filtered endpoints from ${endpoints.length} to ${filteredEndpoints.length} based on domain rules`);
   }
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -821,8 +836,8 @@ export function saveEndpoints(domain, fileUrl, endpoints, options = {}) {
     }
   }
   
-  // Prepare new endpoints with metadata (optimized storage)
-  const newEndpoints = endpoints.map(endpoint => ({
+  // Prepare new endpoints with metadata (optimized storage) - use filtered endpoints
+  const newEndpoints = filteredEndpoints.map(endpoint => ({
     url: endpoint.url,
     method: endpoint.method,
     confidence: endpoint.confidence,
@@ -1294,6 +1309,109 @@ function cleanupUnnecessaryFiles(domain, debug = false) {
   } catch (error) {
     // Ignore cleanup errors
   }
+}
+
+// Filter endpoints based on CLI domain filters
+function filterEndpointsByDomain(endpoints, filters, debug = false) {
+  if (!filters || (!filters.includeDomain && !filters.excludeDomain && !filters.includeUrl && !filters.excludeUrl)) {
+    return endpoints; // No filters applied
+  }
+  
+  return endpoints.filter(endpoint => {
+    try {
+      const endpointUrl = endpoint.url;
+      
+      // Skip malformed URLs
+      if (!endpointUrl || typeof endpointUrl !== 'string') {
+        return false;
+      }
+      
+      // Handle relative URLs - assume they belong to the target domain
+      let domain;
+      let fullUrl = endpointUrl;
+      
+      if (endpointUrl.startsWith('/') || !endpointUrl.includes('://')) {
+        // Relative URL - we can't easily determine the domain, so we allow it
+        // (it's likely from the target domain)
+        return true;
+      }
+      
+      try {
+        const urlObj = new URL(endpointUrl);
+        domain = urlObj.hostname;
+        fullUrl = endpointUrl;
+      } catch (urlError) {
+        // Invalid URL format
+        if (debug) {
+          console.log(`[ENDPOINT FILTER] Skipping malformed URL: ${endpointUrl}`);
+        }
+        return false;
+      }
+      
+      // Apply the same filtering logic as shouldProcessJSFile
+      
+      // Check include domain filter - must match at least one pattern if specified
+      if (filters.includeDomain && filters.includeDomain.length > 0) {
+        if (!filters.includeDomain.some(pattern => matchesWildcardPattern(domain, pattern))) {
+          if (debug) {
+            console.log(`[ENDPOINT FILTER] Excluded by includeDomain: ${endpointUrl} (domain: ${domain})`);
+          }
+          return false;
+        }
+      }
+      
+      // Check exclude domain filter - must not match any pattern if specified
+      if (filters.excludeDomain && filters.excludeDomain.length > 0) {
+        if (filters.excludeDomain.some(pattern => matchesWildcardPattern(domain, pattern))) {
+          if (debug) {
+            console.log(`[ENDPOINT FILTER] Excluded by excludeDomain: ${endpointUrl} (domain: ${domain})`);
+          }
+          return false;
+        }
+      }
+      
+      // Check include URL filter - must match at least one pattern if specified
+      if (filters.includeUrl && filters.includeUrl.length > 0) {
+        if (!filters.includeUrl.some(pattern => matchesWildcardPattern(fullUrl, pattern))) {
+          if (debug) {
+            console.log(`[ENDPOINT FILTER] Excluded by includeUrl: ${endpointUrl}`);
+          }
+          return false;
+        }
+      }
+      
+      // Check exclude URL filter - must not match any pattern if specified
+      if (filters.excludeUrl && filters.excludeUrl.length > 0) {
+        if (filters.excludeUrl.some(pattern => matchesWildcardPattern(fullUrl, pattern))) {
+          if (debug) {
+            console.log(`[ENDPOINT FILTER] Excluded by excludeUrl: ${endpointUrl}`);
+          }
+          return false;
+        }
+      }
+      
+      return true;
+    } catch (error) {
+      if (debug) {
+        console.log(`[ENDPOINT FILTER] Error filtering endpoint ${endpoint.url}: ${error.message}`);
+      }
+      return false;
+    }
+  });
+}
+
+// Helper function for wildcard pattern matching (same as in crawler.js)
+function matchesWildcardPattern(text, pattern) {
+  if (!pattern) return true;
+  
+  // Convert wildcard pattern to regex
+  const regexPattern = pattern
+    .replace(/\./g, '\\.')  // Escape dots
+    .replace(/\*/g, '.*')   // Convert * to .*
+    .replace(/\?/g, '.');   // Convert ? to .
+  
+  const regex = new RegExp(`^${regexPattern}$`, 'i');
+  return regex.test(text);
 }
 
 export const endpointExtractor = new EndpointExtractor(); 
