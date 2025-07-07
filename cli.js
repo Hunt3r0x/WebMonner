@@ -282,7 +282,8 @@ if (opts.cleanupEndpoints) {
     const result = cleanupAllEndpointData({
       maxEndpointsPerDomain: parseInt(opts.maxEndpoints) || 1000,
       maxFilesPerDomain: parseInt(opts.maxEndpointFiles) || 100,
-      quiet: opts.quiet
+      quiet: opts.quiet,
+      debug: opts.debug
     });
     
     if (result) {

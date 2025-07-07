@@ -198,8 +198,6 @@ class EndpointExtractor {
     return Array.from(urlMap.values());
   }
 
-
-
   extractWithRegex(content, fileUrl, endpoints) {
     // Extract URLs with different patterns
     Object.entries(this.patterns).forEach(([category, patterns]) => {
@@ -791,12 +789,17 @@ class EndpointExtractor {
 
 // Save endpoints to organized files with size management
 export function saveEndpoints(domain, fileUrl, endpoints, options = {}) {
-  const { quiet = false, debug = false, maxEndpointsPerDomain = 1000, maxFilesPerDomain = 100 } = options;
+  const { 
+    quiet = false, 
+    debug = false,
+    maxEndpointsPerDomain = 1000,
+    maxFilesPerDomain = 100
+  } = options;
   
   if (!endpoints || endpoints.length === 0) {
-    return { saved: false, count: 0 };
+    return { saved: false, count: 0, newCount: 0, summary: { total: 0, high_confidence: 0, medium_confidence: 0, low_confidence: 0, by_method: {}, by_category: {} } };
   }
-  
+
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const fileName = encodeURIComponent(fileUrl).replace(/%/g, '_');
   
@@ -842,7 +845,7 @@ export function saveEndpoints(domain, fileUrl, endpoints, options = {}) {
     allEndpoints.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
     allEndpoints.splice(0, excessCount);
     
-    if (!quiet) {
+    if (debug) {
       console.log(`[STORAGE] Trimmed ${excessCount} oldest endpoints to maintain limit of ${maxEndpointsPerDomain}`);
     }
   }
@@ -1093,7 +1096,7 @@ export function getEndpointStorageStats(domain) {
 
 // Clean up all endpoint data for all domains
 export function cleanupAllEndpointData(options = {}) {
-  const { maxEndpointsPerDomain = 1000, maxFilesPerDomain = 100, quiet = false } = options;
+  const { maxEndpointsPerDomain = 1000, maxFilesPerDomain = 100, quiet = false, debug = false } = options;
   
   try {
     const dataDir = 'data';
@@ -1124,7 +1127,7 @@ export function cleanupAllEndpointData(options = {}) {
               const trimmed = allEndpoints.slice(0, maxEndpointsPerDomain);
               fs.writeFileSync(allEndpointsPath, JSON.stringify(trimmed, null, 2));
               
-              if (!quiet) {
+              if (debug) {
                 console.log(`[STORAGE] Trimmed ${domain} endpoints from ${allEndpoints.length} to ${maxEndpointsPerDomain}`);
               }
             }
@@ -1151,8 +1154,6 @@ export function cleanupAllEndpointData(options = {}) {
     return null;
   }
 }
-
-
 
 // Create simple text file with all endpoints (newest at bottom)
 function createEndpointsTextFile(domain, endpoints) {

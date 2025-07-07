@@ -15,6 +15,10 @@ export class DiscordNotifier {
       errors: [],
       endpointsFound: []
     };
+    // New: Track last sent summary to prevent duplicates
+    this.lastSummarySignature = null;
+    this.lastSummaryTime = 0;
+    this.summaryMinInterval = 300000; // 5 minutes minimum between identical summaries
   }
 
   // New: Add change to batch instead of sending immediately
@@ -51,6 +55,18 @@ export class DiscordNotifier {
       return;
     }
 
+    // Create a signature of the summary content to prevent duplicate notifications
+    const summarySignature = this.createSummarySignature(newFiles, changedFiles, errors, endpointsFound);
+    const currentTime = Date.now();
+    
+    // Check if this is a duplicate summary and not enough time has passed
+    if (this.lastSummarySignature === summarySignature && 
+        (currentTime - this.lastSummaryTime) < this.summaryMinInterval) {
+      console.log('Skipping duplicate summary notification (same content within 5 minutes)');
+      this.clearBatch();
+      return;
+    }
+
     try {
       const embed = this.createBatchedSummaryEmbed(newFiles, changedFiles, errors, endpointsFound);
       const payload = {
@@ -67,6 +83,9 @@ export class DiscordNotifier {
       });
 
       if (response.ok) {
+        // Update last sent summary info
+        this.lastSummarySignature = summarySignature;
+        this.lastSummaryTime = currentTime;
         console.log(`Discord summary sent: ${totalChanges} changes, ${totalEndpoints} endpoints, ${errors.length} errors`);
       } else if (response.status === 429) {
         // Handle rate limiting
@@ -82,6 +101,50 @@ export class DiscordNotifier {
 
     // Clear batch after sending
     this.clearBatch();
+  }
+
+  // New: Create a signature for summary content to detect duplicates
+  createSummarySignature(newFiles, changedFiles, errors, endpointsFound) {
+    const parts = [];
+    
+    // Add new files info
+    parts.push(`new:${newFiles.length}`);
+    newFiles.forEach(file => {
+      parts.push(`nf:${file.url}:${file.lines}`);
+    });
+    
+    // Add changed files info
+    parts.push(`changed:${changedFiles.length}`);
+    changedFiles.forEach(file => {
+      parts.push(`cf:${file.url}:${file.addedLines}:${file.removedLines}`);
+    });
+    
+    // Add errors info
+    parts.push(`errors:${errors.length}`);
+    errors.forEach(error => {
+      parts.push(`err:${error.url}:${error.type}`);
+    });
+    
+    // Add endpoints info (this is likely the main duplicate source)
+    parts.push(`endpoints:${endpointsFound.length}`);
+    endpointsFound.forEach(ep => {
+      parts.push(`ep:${ep.url}:${ep.newEndpoints}:${ep.highConfidence}:${ep.mediumConfidence}:${ep.lowConfidence}`);
+    });
+    
+    // Create a simple hash of the combined data
+    const signature = parts.join('|');
+    return this.simpleHash(signature);
+  }
+
+  // Simple hash function for creating signatures
+  simpleHash(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    return hash.toString();
   }
 
   // New: Create batched summary embed with domain organization
@@ -561,7 +624,9 @@ export class DiscordNotifier {
       sentCount: this.sentNotifications.size,
       queuedCount: this.pendingNotifications.length,
       isRateLimited: this.isRateLimited(),
-      rateLimitReset: this.rateLimitReset > 0 ? new Date(this.rateLimitReset).toLocaleTimeString() : 'None'
+      rateLimitReset: this.rateLimitReset > 0 ? new Date(this.rateLimitReset).toLocaleTimeString() : 'None',
+      lastSummaryTime: this.lastSummaryTime > 0 ? new Date(this.lastSummaryTime).toLocaleTimeString() : 'None',
+      summaryMinInterval: `${this.summaryMinInterval / 60000} minutes`
     };
   }
 
@@ -570,6 +635,15 @@ export class DiscordNotifier {
     this.sentNotifications.clear();
     this.pendingNotifications = [];
     this.rateLimitReset = 0;
+    this.lastSummarySignature = null;
+    this.lastSummaryTime = 0;
+  }
+
+  // Force send next summary (bypass deduplication)
+  forceSendNextSummary() {
+    this.lastSummarySignature = null;
+    this.lastSummaryTime = 0;
+    console.log('Next summary will be sent regardless of deduplication');
   }
 
   // Send new code preview as a Discord message
