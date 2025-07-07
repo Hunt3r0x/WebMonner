@@ -42,6 +42,7 @@ program
   .option('--similarity-threshold <number>', 'Similarity threshold (0.0-1.0, default: 0.7)', '0.7')
   .option('--extract-endpoints', 'Enable endpoint extraction from JavaScript files')
   .option('--show-endpoints', 'Show extracted endpoints in output')
+  .option('--endpoint-regex <pattern...>', 'Custom regex patterns for endpoint extraction (can be used multiple times)')
   .option('--generate-endpoint-report <domain>', 'Generate comprehensive endpoint report for a domain and exit')
   .option('--generate-all-endpoint-reports', 'Generate endpoint reports for all domains and exit')
   .option('--cleanup-endpoints', 'Clean up excessive endpoint data and exit')
@@ -483,7 +484,8 @@ const config = {
   extractEndpoints: opts.extractEndpoints || false,
   showEndpoints: opts.showEndpoints || false,
   maxEndpointsPerDomain: parseInt(opts.maxEndpoints) || 1000,
-  maxEndpointFilesPerDomain: parseInt(opts.maxEndpointFiles) || 100
+  maxEndpointFilesPerDomain: parseInt(opts.maxEndpointFiles) || 100,
+  customEndpointRegex: opts.endpointRegex || null
 };
 
 // Show configuration summary
@@ -500,18 +502,25 @@ const configData = {
     ...(filters.includeUrl ? filters.includeUrl.map(f => `+${f}`) : []),
     ...(filters.excludeUrl ? filters.excludeUrl.map(f => `-${f}`) : [])
   ].join(', ') || 'None',
-  'Output Mode': config.quiet ? 'Quiet' : config.verbose ? 'Verbose' : 'Normal',
-  'Code Preview': config.showCodePreview ? 'Enabled' : 'Disabled',
-  'Max Lines': config.maxLines,
-  'Discord Alerts': opts.discordWebhook ? 'Enabled' : 'Disabled',
-  'Diff Storage': config.saveDiff ? 'Enabled' : 'Disabled',
-  'Max Diff Files': config.maxDiffFiles,
-  'Auto Cleanup': config.cleanupOldDiffs ? 'Enabled' : 'Disabled',
-  'Extract Endpoints': config.extractEndpoints ? 'Enabled' : 'Disabled',
-  'Show Endpoints': config.showEndpoints ? 'Enabled' : 'Disabled'
+  'Endpoint Extraction': config.extractEndpoints ? 'Enabled' : 'Disabled',
+  'Custom Endpoint Regex': config.customEndpointRegex ? `${config.customEndpointRegex.length} patterns` : 'None'
 };
 
-summary.create('Configuration', configData);
+// Show debug information if requested
+if (config.debug) {
+  summary.create('Configuration', configData);
+  
+  // Show custom endpoint regex patterns
+  if (config.customEndpointRegex && config.customEndpointRegex.length > 0) {
+    log.separator();
+    log.header('Custom Endpoint Regex Patterns');
+    config.customEndpointRegex.forEach((pattern, index) => {
+      log.info(`${index + 1}. ${pattern}`);
+    });
+  }
+} else {
+  summary.create('Configuration', configData);
+}
 
 // Send Discord notification for live monitoring start
 if (config.liveMode && discordNotifier.enabled) {

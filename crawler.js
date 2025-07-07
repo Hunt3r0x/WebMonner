@@ -112,7 +112,7 @@ function handleNetworkError(error, url) {
 }
 
 export default async function runCrawler(options) {
-  const { urls, authEnabled, customHeaders, liveMode, filters, quiet, verbose, debug, showCodePreview, maxLines, discordNotifier, extractEndpoints, showEndpoints, maxEndpointsPerDomain, maxEndpointFilesPerDomain } = options;
+  const { urls, authEnabled, customHeaders, liveMode, filters, quiet, verbose, debug, showCodePreview, maxLines, discordNotifier, extractEndpoints, showEndpoints, maxEndpointsPerDomain, maxEndpointFilesPerDomain, customEndpointRegex } = options;
   
   let browser;
   const scanStartTime = Date.now();
@@ -220,7 +220,8 @@ export default async function runCrawler(options) {
           unchanged: [],
           filtered: [],
           errors: [],
-          changeSummaries: []
+          changeSummaries: [],
+          endpoints: []
         };
 
         // Enhanced JavaScript detection patterns
@@ -453,7 +454,7 @@ export default async function runCrawler(options) {
                 if (extractEndpoints) {
                   try {
                     const content = buffer.toString();
-                    const extractedEndpoints = endpointExtractor.extractEndpoints(content, respUrl);
+                    const extractedEndpoints = endpointExtractor.extractEndpoints(content, respUrl, customEndpointRegex);
                     
                     if (extractedEndpoints.length > 0) {
                       const endpointResult = saveEndpoints(domain, respUrl, extractedEndpoints, { 
@@ -461,12 +462,12 @@ export default async function runCrawler(options) {
                         debug,
                         filters,
                         maxEndpointsPerDomain: maxEndpointsPerDomain || 1000,
-                        maxFilesPerDomain: maxEndpointFilesPerDomain || 100
+                        maxFilesPerDomain: maxEndpointFilesPerDomain || 100,
+                        customRegex: customEndpointRegex
                       });
                       
                       if (endpointResult.saved) {
                         // Add endpoint info to status messages
-                        statusMessages.endpoints = statusMessages.endpoints || [];
                         statusMessages.endpoints.push({
                           url: respUrl,
                           count: endpointResult.count,

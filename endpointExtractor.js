@@ -17,7 +17,8 @@ class EndpointExtractor {
   }
 
   initializePatterns() {
-    return {
+    // Base patterns
+    const basePatterns = {
       // URL patterns with high confidence
       urlPatterns: [
         // API endpoints
@@ -71,7 +72,7 @@ class EndpointExtractor {
         /['"`](GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)['"`][^}]*['"`]([^'"`]+)['"`]/gi,
       ],
 
-      // Fetch/Ajax patterns
+      // Enhanced fetch/Ajax patterns with template literal support
       fetchPatterns: [
         /fetch\s*\(\s*['"`]([^'"`]+)['"`]/gi,
         /\$\.ajax\s*\(\s*['"`]([^'"`]+)['"`]/gi,
@@ -81,6 +82,15 @@ class EndpointExtractor {
         /axios\s*\(\s*['"`]([^'"`]+)['"`]/gi,
         /xhr\.open\s*\(\s*['"`][^'"`]+['"`]\s*,\s*['"`]([^'"`]+)['"`]/gi,
         /XMLHttpRequest[^}]*\.open\s*\([^)]*['"`]([^'"`]+)['"`]/gi,
+        
+        // Template literal patterns in fetch calls
+        /fetch\s*\(\s*`([^`]*\$\{[^}]*\}[^`]*)`/gi,
+        /get\s*\(\s*`([^`]*\$\{[^}]*\}[^`]*)`/gi,
+        /post\s*\(\s*`([^`]*\$\{[^}]*\}[^`]*)`/gi,
+        /put\s*\(\s*`([^`]*\$\{[^}]*\}[^`]*)`/gi,
+        /patch\s*\(\s*`([^`]*\$\{[^}]*\}[^`]*)`/gi,
+        /delete\s*\(\s*`([^`]*\$\{[^}]*\}[^`]*)`/gi,
+        /axios\.[a-zA-Z]+\s*\(\s*`([^`]*\$\{[^}]*\}[^`]*)`/gi,
       ],
 
       // Router patterns
@@ -115,7 +125,27 @@ class EndpointExtractor {
         /endpoint[^'"`]*['"`]([^'"`]+)['"`]/gi,
       ],
 
-      // Dynamic/concatenation patterns (regex approximation)
+      // Enhanced template literal patterns
+      templateLiteralPatterns: [
+        // Template literals with variables in API paths
+        /`([^`]*\/api\/[^`]*\$\{[^}]*\}[^`]*)`/gi,
+        /`([^`]*\$\{[^}]*\}[^`]*\/api\/[^`]*)`/gi,
+        /`([^`]*\/api\/[^`]*)`/gi,
+        
+        // Template literals with query parameters
+        /`([^`]*\?[^`]*\$\{[^}]*\}[^`]*)`/gi,
+        /`([^`]*\$\{[^}]*\}[^`]*\?[^`]*)`/gi,
+        
+        // General template literal endpoints
+        /`([^`]*\/[^`]*\$\{[^}]*\}[^`]*)`/gi,
+        /`(\$\{[^}]*\}[^`]*\/[^`]*)`/gi,
+        
+        // Template literals in parentheses (common in function calls)
+        /\(\s*`([^`]*\$\{[^}]*\}[^`]*)`\s*\)/gi,
+        /\(\s*`([^`]*\/[^`]*)`\s*\)/gi,
+      ],
+
+      // Dynamic/concatenation patterns (enhanced)
       dynamicPatterns: [
         // String concatenation patterns
         /['"`]([^'"`]*\/[^'"`]*?)['"`]\s*\+\s*['"`]([^'"`]+?)['"`]/gi,
@@ -148,12 +178,55 @@ class EndpointExtractor {
         /\[[^\]]*['"`]([^'"`]*\/[^'"`]+?)['"`][^\]]*\]\.join\(/gi,
       ]
     };
+
+    // Load custom patterns from config if available
+    const customPatterns = this.loadCustomPatterns();
+    
+    // Merge base patterns with custom patterns
+    return { ...basePatterns, ...customPatterns };
+  }
+
+  // Load custom regex patterns from configuration
+  loadCustomPatterns() {
+    try {
+      // Try to load custom patterns from config file
+      if (fs.existsSync('config.json')) {
+        const config = JSON.parse(fs.readFileSync('config.json', 'utf-8'));
+        if (config.endpointExtraction && config.endpointExtraction.customPatterns) {
+          const customPatterns = {};
+          
+          Object.entries(config.endpointExtraction.customPatterns).forEach(([category, patterns]) => {
+            customPatterns[category] = patterns.map(pattern => {
+              // Convert string patterns to RegExp objects
+              if (typeof pattern === 'string') {
+                return new RegExp(pattern, 'gi');
+              } else if (pattern.pattern && pattern.flags) {
+                return new RegExp(pattern.pattern, pattern.flags);
+              }
+              return pattern;
+            }).filter(Boolean);
+          });
+          
+          console.log(`[ENDPOINT EXTRACTOR] Loaded ${Object.keys(customPatterns).length} custom pattern categories`);
+          return customPatterns;
+        }
+      }
+    } catch (error) {
+      console.log(`[ENDPOINT EXTRACTOR] Could not load custom patterns: ${error.message}`);
+    }
+    
+    return {};
   }
 
   // Extract endpoints from JavaScript content
-  extractEndpoints(content, fileUrl) {
+  extractEndpoints(content, fileUrl, customRegex = null) {
     const endpoints = new Map();
     const lines = content.split('\n');
+    
+    // Add custom regex patterns if provided
+    if (customRegex && customRegex.length > 0) {
+      this.addCustomPatterns(customRegex);
+    }
     
     // Method 1: Regex-based extraction
     this.extractWithRegex(content, fileUrl, endpoints);
@@ -209,7 +282,11 @@ class EndpointExtractor {
           // Handle different match groups for different pattern types
           let endpoint = null;
           
-          if (category === 'dynamicPatterns' && matches.length > 2) {
+          if (category === 'templateLiteralPatterns') {
+            // Special handling for template literals with variables
+            const templateStr = matches[1] || matches[0];
+            endpoint = this.normalizeTemplateEndpoint(templateStr);
+          } else if (category === 'dynamicPatterns' && matches.length > 2) {
             // For concatenation patterns, try to combine the parts
             const part1 = this.cleanEndpoint(matches[1] || '');
             const part2 = this.cleanEndpoint(matches[2] || '');
@@ -234,6 +311,11 @@ class EndpointExtractor {
           } else {
             // Standard single match extraction
             endpoint = this.cleanEndpoint(matches[1] || matches[0]);
+          }
+          
+          // Apply normalization to all endpoints
+          if (endpoint) {
+            endpoint = this.normalizeTemplateEndpoint(endpoint) || endpoint;
           }
           
           if (endpoint && this.isValidEndpoint(endpoint)) {
@@ -572,7 +654,7 @@ class EndpointExtractor {
     }
   }
 
-  // Enhanced template reconstruction with variable resolution
+  // Enhanced template reconstruction with variable resolution and normalization
   reconstructTemplateWithVariables(node) {
     if (!node.quasis || !node.expressions) return null;
     
@@ -585,13 +667,54 @@ class EndpointExtractor {
         if (resolved && typeof resolved === 'string') {
           result += resolved;
         } else {
-          // If we can't resolve, use a placeholder but still mark as potentially valid
-          result += '${...}';
+          // Normalize variable placeholders based on context
+          const rawExpr = node.quasis[i + 1]?.value?.raw || '';
+          if (rawExpr.startsWith('/') || result.endsWith('/')) {
+            // Path parameter
+            result += '{id}';
+          } else if (result.includes('?') || result.includes('&')) {
+            // Query parameter
+            result += '{param}';
+          } else {
+            // Default placeholder
+            result += '{var}';
+          }
         }
       }
     }
     
-    return result;
+    // Clean up the result
+    return this.normalizeTemplateEndpoint(result);
+  }
+
+  // Normalize template endpoints for better consistency
+  normalizeTemplateEndpoint(endpoint) {
+    if (!endpoint) return null;
+    
+    // Replace various variable patterns with normalized placeholders
+    endpoint = endpoint
+      // Replace ${anything} with appropriate placeholders
+      .replace(/\$\{\s*[^}]+\s*\}/g, (match, offset, string) => {
+        const before = string.substring(0, offset);
+        const after = string.substring(offset + match.length);
+        
+        // Determine context to choose appropriate placeholder
+        if (before.endsWith('/') || after.startsWith('/')) {
+          return '{id}';
+        } else if (before.includes('?') || before.includes('&') || after.startsWith('&')) {
+          return '{param}';
+        } else {
+          return '{var}';
+        }
+      })
+      // Clean up multiple consecutive slashes
+      .replace(/\/+/g, '/')
+      // Remove trailing slashes
+      .replace(/\/$/, '')
+      // Normalize query parameters
+      .replace(/\{param\}(&|$)/g, '{param}$1');
+    
+    return endpoint;
   }
 
   extractWithLineAnalysis(lines, fileUrl, endpoints) {
@@ -724,6 +847,7 @@ class EndpointExtractor {
       'websocketPatterns': 5,
       'fullUrlPatterns': 5,
       'configPatterns': 3,
+      'templateLiteralPatterns': 4,
       'dynamicPatterns': 4,
       'obfuscatedPatterns': 3,
       'network_call': 5,
@@ -733,7 +857,8 @@ class EndpointExtractor {
       'template_literal_resolved': 4,
       'string_concatenation': 4,
       'variable_assignment': 3,
-      'line_analysis': 1
+      'line_analysis': 1,
+      'customCliPatterns': 5 // High confidence for user-defined patterns
     };
     
     score += categoryScores[category] || 1;
@@ -784,6 +909,31 @@ class EndpointExtractor {
     }
     
     return result;
+  }
+
+  // Add custom regex patterns at runtime
+  addCustomPatterns(customRegex) {
+    if (!customRegex || !Array.isArray(customRegex)) return;
+    
+    // Create a custom pattern category
+    this.patterns.customCliPatterns = customRegex.map(pattern => {
+      try {
+        // Handle both string patterns and objects with flags
+        if (typeof pattern === 'string') {
+          return new RegExp(pattern, 'gi');
+        } else if (pattern.pattern) {
+          return new RegExp(pattern.pattern, pattern.flags || 'gi');
+        }
+        return null;
+      } catch (error) {
+        console.log(`[ENDPOINT EXTRACTOR] Invalid custom regex pattern: ${pattern} - ${error.message}`);
+        return null;
+      }
+    }).filter(Boolean);
+    
+    if (this.patterns.customCliPatterns.length > 0) {
+      console.log(`[ENDPOINT EXTRACTOR] Added ${this.patterns.customCliPatterns.length} custom CLI regex patterns`);
+    }
   }
 }
 

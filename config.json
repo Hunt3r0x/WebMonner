@@ -4,5 +4,44 @@
     "loginUrl": "https://example.com",
     "email": "email@email.com",
     "password": "password"
+  },
+  "discord": {
+    "webhook": "",
+    "enabled": false
+  },
+  "notifications": {
+    "enabled": false,
+    "methods": ["discord"]
+  },
+  "endpointExtraction": {
+    "customPatterns": {
+      "customApiPatterns": [
+        {
+          "pattern": "\\$\\{[^}]*\\}\\/api\\/[^\\s`'\"]+",
+          "flags": "gi",
+          "description": "Template literal API endpoints with variables"
+        },
+        {
+          "pattern": "put\\s*\\(\\s*`([^`]*\\$\\{[^}]*\\}[^`]*)`",
+          "flags": "gi",
+          "description": "PUT requests with template literals"
+        },
+        {
+          "pattern": "get\\s*\\(\\s*`([^`]*\\$\\{[^}]*\\}[^`]*)`",
+          "flags": "gi",
+          "description": "GET requests with template literals"
+        }
+      ],
+      "customQueryParamPatterns": [
+        {
+          "pattern": "\\/api\\/[^\\s?`'\"]*\\?[^\\s`'\"]*\\$\\{[^}]*\\}[^\\s`'\"]*",
+          "flags": "gi",
+          "description": "API endpoints with query parameters containing variables"
+        }
+      ],
+      "customUserPatterns": [
+        "your-custom-regex-pattern-here"
+      ]
+    }
   }
 } 
