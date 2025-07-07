@@ -1,10 +1,17 @@
-# WebMonner
+# WebMonner - JavaScript Security Scanner
 
-JavaScript security monitoring platform for enterprise environments. Tracks JavaScript files across web applications, detects code changes, and provides detailed analysis for security teams.
+A comprehensive web security scanner that monitors JavaScript files for changes and analyzes code similarity to track renamed/moved files.
 
-## Overview
+## Features
 
-WebMonner monitors JavaScript files loaded by web applications and detects changes with precision. It supports continuous monitoring, domain filtering, authentication, and provides detailed diff analysis for security assessment.
+- **JavaScript File Monitoring**: Automatically detects and tracks all JavaScript files
+- **Code Similarity Analysis**: Identifies renamed/moved files with similar functionality
+- **Change Detection**: Tracks file modifications with detailed diff analysis
+- **Live Monitoring**: Continuous monitoring with customizable intervals
+- **Discord Notifications**: Real-time alerts via Discord webhooks
+- **Filtering**: Advanced domain and URL filtering capabilities
+- **Authentication**: Support for authenticated scanning
+- **Comprehensive Reporting**: Detailed analysis reports and summaries
 
 ## Installation
 
@@ -31,282 +38,242 @@ Create `config.json` for authentication settings:
 
 ## Usage
 
-### Basic Scan
+### Basic Scanning
 
 ```bash
-# Single URL scan
+# Scan a single URL
 node cli.js --url https://example.com
 
-# Multiple URLs from file
-node cli.js --urls targets.txt
+# Scan multiple URLs from a file
+node cli.js --urls urls.txt
+
+# Scan with verbose output
+node cli.js --url https://example.com --verbose
+
+# Scan with custom similarity threshold
+node cli.js --url https://example.com --similarity-threshold 0.8
 ```
 
-### Domain Filtering
+### Live Monitoring
 
 ```bash
-# Monitor only specific domains
-node cli.js --url https://app.example.com --include-domain "*.example.com"
-
-# Monitor multiple domains
-node cli.js --url https://app.example.com --include-domain "*.example.com" --include-domain "*.api.com"
-
-# Exclude specific domains
-node cli.js --url https://example.com --exclude-domain "*.analytics.com"
-
-# Exclude multiple domains
-node cli.js --url https://example.com --exclude-domain "*.analytics.com" --exclude-domain "*.ads.com"
-```
-
-### Multiple Filters
-
-**Multiple Flag Approach:**
-```bash
-# Multiple include domains
-node cli.js --urls targets.txt --include-domain "*.example.com" --include-domain "*.api.com" --include-domain "*.admin.com"
-
-# Multiple exclude domains
-node cli.js --urls targets.txt --exclude-domain "*.analytics.com" --exclude-domain "*.ads.com" --exclude-domain "*.tracking.com"
-
-# Complex filtering with multiple patterns
-node cli.js --urls targets.txt \
-  --include-domain "*.example.com" \
-  --include-domain "*.api.com" \
-  --exclude-domain "*.cdn.example.com" \
-  --exclude-url "*.min.js" \
-  --exclude-url "*vendor*"
-```
-
-**Comma-Separated Approach:**
-```bash
-# Multiple include domains (comma-separated)
-node cli.js --urls targets.txt --include-domain "*.example.com,*.api.com,*.admin.com"
-
-# Multiple exclude domains (comma-separated)
-node cli.js --urls targets.txt --exclude-domain "*.analytics.com,*.ads.com,*.tracking.com"
-
-# Multiple URL filters (comma-separated)
-node cli.js --urls targets.txt --include-url "*admin*,*api*" --exclude-url "*.min.js,*vendor*"
-```
-
-**Mixed Approach (both methods work together):**
-```bash
-# Combine comma-separated and multiple flags
-node cli.js --urls targets.txt \
-  --include-domain "*.example.com,*.api.com" \
-  --include-domain "*.admin.com" \
-  --exclude-domain "*.cdn.example.com" \
-  --exclude-url "*.min.js,*vendor*"
-```
-
-### Continuous Monitoring
-
-```bash
-# Live monitoring with 60-second intervals
+# Monitor every 60 seconds
 node cli.js --url https://example.com --live --interval 60
 
-# Live monitoring with domain filtering
-node cli.js --urls targets.txt --live --include-domain "*.example.com"
+# Monitor with Discord notifications
+node cli.js --url https://example.com --live --discord-webhook https://discord.com/api/webhooks/...
+```
 
-# Live monitoring with multiple filters
-node cli.js --urls targets.txt --live --include-domain "*.example.com" --include-domain "*.api.com"
+### Filtering
+
+```bash
+# Only monitor specific domains
+node cli.js --url https://example.com --include-domain "*.example.com,*.cdn.com"
+
+# Exclude specific domains
+node cli.js --url https://example.com --exclude-domain "*.ads.com,*.tracking.com"
+
+# Filter by URL patterns
+node cli.js --url https://example.com --include-url "*/api/*" --exclude-url "*/test/*"
+```
+
+### Similarity Analysis
+
+```bash
+# Analyze file similarity for a specific domain
+node cli.js --analyze-similarity example.com
+
+# Analyze all domains
+node cli.js --analyze-all-domains
+
+# Use custom similarity threshold (0.0-1.0)
+node cli.js --analyze-similarity example.com --similarity-threshold 0.8
 ```
 
 ### Authentication
 
 ```bash
-# Enable authentication
+# Enable authentication (requires config.json)
 node cli.js --url https://example.com --auth
 
-# Custom headers
-node cli.js --url https://example.com --header "Authorization: Bearer token123"
+# Add custom headers
+node cli.js --url https://example.com --header "Cookie: session=abc123" --header "Authorization: Bearer token"
 ```
 
-### Output Control
-
-```bash
-# Quiet mode
-node cli.js --url https://example.com --quiet
-
-# Verbose mode
-node cli.js --url https://example.com --verbose
-
-# Debug mode (detailed technical information)
-node cli.js --url https://example.com --debug
-
-# Disable colors (for CI/CD)
-node cli.js --url https://example.com --no-color
-```
-
-### Debug Mode
-
-The `--debug` flag provides detailed technical information for troubleshooting:
-
-```bash
-node cli.js --url https://example.com --debug
-```
-
-**Debug output includes:**
-- HTTP response headers (Content-Type, Content-Encoding, etc.)
-- Response status codes and error details
-- Puppeteer buffer vs direct fetch comparisons
-- SHA256 hash calculations and comparisons
-- File filtering decisions
-- Cache behavior and 304 responses
-- Protocol errors and fallback mechanisms
-
-## Command Line Options
-
-```
-URL Options:
-  --url <url>                  Target URL
-  --urls <file>                File containing URLs (one per line)
-
-Filtering:
-  --include-domain <pattern>   Include domains matching pattern (comma-separated or multiple flags)
-  --exclude-domain <pattern>   Exclude domains matching pattern (comma-separated or multiple flags)
-  --include-url <pattern>      Include URLs matching pattern (comma-separated or multiple flags)
-  --exclude-url <pattern>      Exclude URLs matching pattern (comma-separated or multiple flags)
-
-Monitoring:
-  --live                       Enable continuous monitoring
-  --interval <seconds>         Monitoring interval (default: 30)
-  --auth                       Enable authentication
-
-Output:
-  --quiet                      Minimal output
-  --verbose                    Show all file status information
-  --debug                      Enable detailed debugging output
-  --no-color                   Disable colored output
-  --no-code-preview           Disable code change preview
-  --max-lines <number>        Lines per code section (default: 10)
-
-Debugging:
-  --debug-colors              Show color support information
-  --test-discord              Test Discord notifications
-```
-
-## URL File Format
-
-Create a text file with URLs (one per line):
-
-```
-# Comments start with #
-https://app.example.com
-https://admin.example.com
-https://api.example.com
-```
-
-## Pattern Matching
-
-Supports wildcard patterns:
-- `*.example.com` matches any subdomain of example.com
-- `*jquery*` matches any URL containing "jquery"
-- `*.min.js` matches any minified JavaScript file
-
-## Data Storage
-
-Files are organized by domain:
-
-```
-data/
-├── example.com/
-│   ├── original/        # Raw JavaScript files
-│   ├── beautified/      # Formatted JavaScript files
-│   ├── diffs/           # Change analysis files
-│   ├── new-code/        # New code sections
-│   └── hashes.json      # File integrity tracking
-```
-
-## File Detection
-
-Detects JavaScript files by:
-- File extensions: .js, .mjs, .jsx, .ts, .tsx
-- Content-Type headers: application/javascript, text/javascript
-- Response analysis for dynamic content
-
-## Change Detection
-
-Uses SHA-256 hashing for reliable change detection:
-- Tracks all JavaScript files per domain
-- Identifies new, modified, and removed files
-- Provides line-by-line diff analysis
-- Preserves change history
-
-## Discord Integration
-
-```bash
-# Configure Discord webhook
-node cli.js --url https://example.com --discord-webhook "https://discord.com/api/webhooks/..."
-
-# Test notifications
-node cli.js --test-discord --discord-webhook "https://discord.com/api/webhooks/..."
-```
-
-## Notifications
-
-Supports Discord notifications for:
-- New files detected
-- File modifications
-- Scan completion
-- Error conditions
-
-## Security Features
-
-- Request authentication support
-- Custom HTTP headers
-- SSL/TLS validation
-- Rate limiting compliance
-- Session management
-
-## Terminal Compatibility
-
-Automatically detects terminal capabilities:
-- Full color support (24-bit)
-- Basic color support (ANSI)
-- Plain text fallback
-- tmux/screen compatibility
-
-## Performance
-
-- Concurrent file processing
-- Efficient change detection
-- Memory-optimized diff analysis
-- Configurable scan intervals
-
-## Error Handling
-
-- Network timeout handling
-- SSL certificate validation
-- DNS resolution errors
-- Rate limit detection
-- Graceful degradation
-
-## Production Deployment
-
-```bash
-# Environment variables
-export NO_COLOR=1                    # Disable colors
-export DISCORD_WEBHOOK=https://...   # Discord integration
-
-# Systemd service example
-node cli.js --urls production.txt --live --interval 300 --quiet
-```
-
-## Maintenance
+### Utility Commands
 
 ```bash
 # Clean up old diff files
 node cli.js --cleanup-diffs
 
-# Set maximum diff files per domain
-node cli.js --max-diff-files 100
+# Test Discord notifications
+node cli.js --test-discord --discord-webhook https://discord.com/api/webhooks/...
+
+# Debug color support
+node cli.js --debug-colors
 ```
 
-## Requirements
+## Configuration
 
-- Node.js 16.0 or higher
-- npm or yarn
-- Network access to target URLs
+### config.json
+
+```json
+{
+  "auth": {
+    "loginUrl": "https://example.com/login",
+    "username": "your-username",
+    "password": "your-password",
+    "usernameSelector": "#username",
+    "passwordSelector": "#password",
+    "submitSelector": "#login-button"
+  }
+}
+```
+
+### urls.txt
+
+```
+https://example.com
+https://another-site.com
+# Comments are supported
+https://third-site.com
+```
+
+## Similarity Analysis
+
+The similarity analysis feature helps identify renamed/moved JavaScript files by analyzing:
+
+1. **Function Signatures**: Compares function names and signatures
+2. **Import/Export Statements**: Analyzes module dependencies
+3. **Content Hash**: Compares normalized code content
+4. **Weighted Scoring**: Combines multiple factors for accurate similarity
+
+### Understanding Similarity Reports
+
+The system generates several types of reports:
+
+- **`similarity-report.md`**: Human-readable analysis of file relationships
+- **`fingerprints.json`**: Code fingerprints for each file
+- **`file-relationships.json`**: Detailed relationship data
+
+Example similarity report:
+
+```markdown
+# Code Similarity Analysis for example.com
+
+## File Clusters (Likely Renamed/Moved Files)
+
+### Cluster 1
+**Likely Reason:** renamed_or_moved_files
+**Files:**
+- `https://example.com/js/app.abc123.js`
+- `https://example.com/js/app.def456.js`
+
+### Cluster 2  
+**Likely Reason:** renamed_or_moved_files
+**Files:**
+- `https://example.com/js/vendor.old.js`
+- `https://example.com/js/vendor.new.js`
+```
+
+## Output Structure
+
+```
+data/
+├── domain.com/
+│   ├── original/           # Original JavaScript files
+│   ├── beautified/         # Beautified versions
+│   ├── diffs/              # Change diffs
+│   ├── new-code/           # New code sections
+│   ├── hashes.json         # File hashes
+│   ├── fingerprints.json   # Code fingerprints
+│   ├── file-relationships.json  # Similarity relationships
+│   ├── similarity-report.md     # Human-readable report
+│   └── new-code-summary.md      # Code change summary
+```
+
+## CLI Options
+
+| Option | Description |
+|--------|-------------|
+| `--url <url>` | Target URL (single URL) |
+| `--urls <file>` | File containing list of URLs |
+| `--auth` | Enable authentication |
+| `--header <header>` | Custom headers |
+| `--live` | Enable live monitoring |
+| `--interval <seconds>` | Monitoring interval (default: 30) |
+| `--include-domain <pattern>` | Include domain patterns |
+| `--exclude-domain <pattern>` | Exclude domain patterns |
+| `--include-url <pattern>` | Include URL patterns |
+| `--exclude-url <pattern>` | Exclude URL patterns |
+| `--quiet` | Reduce output verbosity |
+| `--verbose` | Show all file statuses |
+| `--debug` | Enable detailed debugging |
+| `--no-color` | Disable colored output |
+| `--no-code-preview` | Disable code preview |
+| `--max-lines <number>` | Max lines per code section (default: 10) |
+| `--discord-webhook <url>` | Discord webhook URL |
+| `--test-discord` | Test Discord notifications |
+| `--analyze-similarity <domain>` | Analyze similarity for domain |
+| `--analyze-all-domains` | Analyze all domains |
+| `--similarity-threshold <number>` | Similarity threshold (default: 0.7) |
+| `--cleanup-diffs` | Clean up old diff files |
+
+## Examples
+
+### Comprehensive Monitoring Setup
+
+```bash
+# Monitor multiple sites with filtering and notifications
+node cli.js --urls production-sites.txt \
+  --live --interval 120 \
+  --include-domain "*.mycompany.com" \
+  --exclude-url "*/test/*,*/dev/*" \
+  --discord-webhook "https://discord.com/api/webhooks/..." \
+  --verbose
+```
+
+### Security Research Workflow
+
+```bash
+# 1. Initial scan
+node cli.js --url https://target.com --verbose
+
+# 2. Analyze similarities to understand file structure
+node cli.js --analyze-similarity target.com
+
+# 3. Set up monitoring for changes
+node cli.js --url https://target.com --live --interval 300
+```
+
+### Batch Analysis
+
+```bash
+# Analyze all previously scanned domains
+node cli.js --analyze-all-domains --similarity-threshold 0.8
+
+# Clean up old data
+node cli.js --cleanup-diffs
+```
+
+## Troubleshooting
+
+### Common Issues
+
+1. **No files detected**: Check if the site loads JavaScript files dynamically
+2. **Authentication failed**: Verify credentials and selectors in config.json
+3. **Similarity analysis empty**: Ensure you've run scans first to collect data
+4. **Discord notifications not working**: Test with `--test-discord` flag
+
+### Debug Mode
+
+```bash
+# Enable debug output
+node cli.js --url https://example.com --debug
+
+# Check color support
+node cli.js --debug-colors
+```
 
 ## License
 

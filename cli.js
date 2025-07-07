@@ -6,6 +6,7 @@ import runCrawler from './crawler.js';
 import { showBanner, log, summary, SleepTimer, showColorSupport, getColorSupport } from './utils.js';
 import { DiscordNotifier } from './notifications.js';
 import { cleanupAllOldDiffs, getDomainDiskUsage } from './fileManager.js';
+import { codeAnalyzer } from './similarityAnalyzer.js';
 
 // Show professional banner
 showBanner();
@@ -33,7 +34,10 @@ program
   .option('--no-diff', 'Disable saving diff files to save disk space')
   .option('--max-diff-files <number>', 'Maximum diff files to keep per domain (default: 50)', '50')
   .option('--no-cleanup', 'Disable automatic cleanup of old diff files')
-  .option('--cleanup-diffs', 'Clean up old diff files and exit');
+  .option('--cleanup-diffs', 'Clean up old diff files and exit')
+  .option('--analyze-similarity <domain>', 'Analyze file similarity for a specific domain and exit')
+  .option('--analyze-all-domains', 'Analyze file similarity for all domains and exit')
+  .option('--similarity-threshold <number>', 'Similarity threshold (0.0-1.0, default: 0.7)', '0.7');
 
 program.parse(process.argv);
 const opts = program.opts();
@@ -73,6 +77,109 @@ if (opts.cleanupDiffs) {
     log.success(`Cleanup complete: Deleted ${result.deletedFiles} files, saved ${result.savedSpace} bytes`);
   } else {
     log.info('No cleanup needed or no diff files found.');
+  }
+  process.exit(0);
+}
+
+// Handle similarity analysis commands
+if (opts.analyzeSimilarity) {
+  log.info(`Analyzing file similarity for domain: ${opts.analyzeSimilarity}`);
+  try {
+    // Set custom similarity threshold if provided
+    const threshold = parseFloat(opts.similarityThreshold);
+    if (threshold >= 0 && threshold <= 1) {
+      codeAnalyzer.similarityThreshold = threshold;
+      log.info(`Using similarity threshold: ${threshold}`);
+    }
+    
+    const report = codeAnalyzer.generateSimilarityReport(opts.analyzeSimilarity);
+    if (report) {
+      log.success(`Similarity report generated: ${report.reportPath}`);
+      log.info(`Analysis Summary:`);
+      log.info(`  Total Files: ${report.summary.totalFiles}`);
+      log.info(`  File Clusters: ${report.summary.clusters}`);
+      log.info(`  Unique Files: ${report.summary.singletons}`);
+      
+      if (report.summary.clusters > 0) {
+        log.info(`🔍 Found ${report.summary.clusters} groups of similar files`);
+        log.info(`These likely represent renamed/moved files with similar functionality`);
+      }
+      
+      // Clean up old fingerprints
+      codeAnalyzer.cleanupOldFingerprints(opts.analyzeSimilarity);
+    } else {
+      log.warning(`No data found for domain: ${opts.analyzeSimilarity}`);
+    }
+  } catch (error) {
+    log.error(`Similarity analysis failed: ${error.message}`);
+  }
+  process.exit(0);
+}
+
+if (opts.analyzeAllDomains) {
+  log.info('Analyzing file similarity for all domains...');
+  try {
+    // Set custom similarity threshold if provided
+    const threshold = parseFloat(opts.similarityThreshold);
+    if (threshold >= 0 && threshold <= 1) {
+      codeAnalyzer.similarityThreshold = threshold;
+      log.info(`Using similarity threshold: ${threshold}`);
+    }
+    
+    // Find all domains with data
+    const dataDir = 'data';
+    if (!fs.existsSync(dataDir)) {
+      log.warning('No data directory found. Run a scan first.');
+      process.exit(1);
+    }
+    
+    const domains = fs.readdirSync(dataDir).filter(item => 
+      fs.statSync(`${dataDir}/${item}`).isDirectory()
+    );
+    
+    if (domains.length === 0) {
+      log.warning('No domains found in data directory.');
+      process.exit(1);
+    }
+    
+    log.info(`Found ${domains.length} domains to analyze`);
+    log.separator();
+    
+    let totalClusters = 0;
+    let analyzedDomains = 0;
+    
+    for (const domain of domains) {
+      try {
+        log.info(`Analyzing ${domain}...`);
+        const report = codeAnalyzer.generateSimilarityReport(domain);
+        if (report) {
+          log.success(`Report: ${report.reportPath}`);
+          log.muted(`  Files: ${report.summary.totalFiles}, Clusters: ${report.summary.clusters}, Unique: ${report.summary.singletons}`);
+          
+          if (report.summary.clusters > 0) {
+            totalClusters += report.summary.clusters;
+            log.info(`  🔍 Found ${report.summary.clusters} groups of similar files`);
+          }
+          
+          // Clean up old fingerprints
+          codeAnalyzer.cleanupOldFingerprints(domain);
+          analyzedDomains++;
+        } else {
+          log.muted(`  No data found for ${domain}`);
+        }
+      } catch (error) {
+        log.warning(`  Failed to analyze ${domain}: ${error.message}`);
+      }
+    }
+    
+    log.separator();
+    log.success(`Analysis complete: ${analyzedDomains} domains analyzed`);
+    if (totalClusters > 0) {
+      log.info(`🔍 Total similar file groups found: ${totalClusters}`);
+      log.info(`These likely represent renamed/moved files with similar functionality`);
+    }
+  } catch (error) {
+    log.error(`Similarity analysis failed: ${error.message}`);
   }
   process.exit(0);
 }

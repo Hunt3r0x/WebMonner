@@ -5,6 +5,7 @@ import beautify from 'js-beautify';
 import { diffLines, createPatch } from 'diff';
 import { log, formatFileSize } from './utils.js';
 import chalk from 'chalk';
+import { codeAnalyzer } from './similarityAnalyzer.js';
 
 // Extract new/added code sections from diff
 function extractNewCode(diff, maxLines = 10) {
@@ -172,6 +173,16 @@ export function saveJSFile(domain, url, buffer, isNewFile = false, options = {})
   fs.mkdirSync(path.dirname(diffPath), { recursive: true });
   fs.mkdirSync(path.dirname(newCodePath), { recursive: true });
 
+  // Analyze file similarity for potential renames
+  let similarityAnalysis = null;
+  if (isNewFile) {
+    try {
+      similarityAnalysis = codeAnalyzer.findPotentialRenames(domain, url, buffer.toString());
+    } catch (error) {
+      log.warning(`Failed to analyze similarity for ${url}: ${error.message}`);
+    }
+  }
+
   // Beautify the content
   const beautified = beautify.js(buffer.toString(), { 
     indent_size: 2,
@@ -277,6 +288,7 @@ export function saveJSFile(domain, url, buffer, isNewFile = false, options = {})
       rawJSFile,
       beautifiedJSFile
     };
+    diffInfo.similarityAnalysis = similarityAnalysis;
   } else if (isNewFile) {
     // Save new file preview as JavaScript
     const previewJSContent = [
@@ -302,6 +314,7 @@ export function saveJSFile(domain, url, buffer, isNewFile = false, options = {})
       fileSize: buffer.length,
       totalLines: buffer.toString().split('\n').length,
       isNewFile: true,
+      similarityAnalysis,
       savedFiles: {
         diffPath: null,
         rawJSFile: previewJSPath,
@@ -309,7 +322,7 @@ export function saveJSFile(domain, url, buffer, isNewFile = false, options = {})
       }
     };
     
-    // For new files, show a preview of the content
+    // For new files, show a preview of the content and similarity analysis
     if (showCodePreview && !quiet) {
       const lines = buffer.toString().split('\n');
       const preview = lines.slice(0, maxLines).map((line, index) => 
@@ -323,6 +336,20 @@ export function saveJSFile(domain, url, buffer, isNewFile = false, options = {})
         log.muted(`... and ${lines.length - maxLines} more lines`);
       }
       log.muted(`Preview saved: ${previewJSPath}`);
+      
+      // Display similarity analysis if available
+      if (similarityAnalysis && similarityAnalysis.isLikelyRenamed) {
+        log.separator();
+        log.info(`🔍 Similarity Analysis:`);
+        log.muted(`This file might be a renamed version of existing files:`);
+        similarityAnalysis.potentialMatches.forEach((match, index) => {
+          const similarity = Math.round(match.similarity * 100);
+          log.muted(`${index + 1}. ${match.url} (${similarity}% similar)`);
+          if (match.details.details.commonSignatures > 0) {
+            log.muted(`   → ${match.details.details.commonSignatures} common functions`);
+          }
+        });
+      }
     }
   }
 

@@ -2,6 +2,7 @@ import puppeteer from 'puppeteer';
 import fs from 'fs';
 import { loginAndGetToken } from './auth.js';
 import { saveJSFile, generateChangeReport, generateNewCodeSummary } from './fileManager.js';
+import { codeAnalyzer } from './similarityAnalyzer.js';
 import { log, summary, formatUrl, formatFileSize, formatTime, formatDuration, showErrors } from './utils.js';
 import crypto from 'crypto';
 
@@ -671,6 +672,35 @@ export default async function runCrawler(options) {
         const summaryPath = generateNewCodeSummary(domain);
         if (summaryPath) {
           log.muted(`Report: ${summaryPath}`);
+        }
+      }
+    }
+
+    // Generate similarity analysis reports for all domains
+    if (results.totalFiles > 0 && !quiet) {
+      log.separator();
+      log.info('Generating similarity analysis reports...');
+      
+      const domains = new Set();
+      urls.forEach(url => domains.add(new URL(url).hostname));
+      
+      for (const domain of domains) {
+        try {
+          const similarityReport = codeAnalyzer.generateSimilarityReport(domain);
+          if (similarityReport) {
+            log.muted(`Similarity Report: ${similarityReport.reportPath}`);
+            
+            // Display key findings
+            if (similarityReport.summary.clusters > 0) {
+              log.info(`🔍 Found ${similarityReport.summary.clusters} groups of similar files in ${domain}`);
+              log.muted(`These likely represent renamed/moved files with similar functionality`);
+            }
+            
+            // Clean up old fingerprints
+            codeAnalyzer.cleanupOldFingerprints(domain);
+          }
+        } catch (error) {
+          log.warning(`Failed to generate similarity report for ${domain}: ${error.message}`);
         }
       }
     }
