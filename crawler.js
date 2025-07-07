@@ -3,6 +3,7 @@ import fs from 'fs';
 import { loginAndGetToken } from './auth.js';
 import { saveJSFile, generateChangeReport, generateNewCodeSummary } from './fileManager.js';
 import { codeAnalyzer } from './similarityAnalyzer.js';
+import { endpointExtractor, saveEndpoints, generateEndpointReport } from './endpointExtractor.js';
 import { log, summary, formatUrl, formatFileSize, formatTime, formatDuration, showErrors } from './utils.js';
 import crypto from 'crypto';
 
@@ -111,7 +112,7 @@ function handleNetworkError(error, url) {
 }
 
 export default async function runCrawler(options) {
-  const { urls, authEnabled, customHeaders, liveMode, filters, quiet, verbose, debug, showCodePreview, maxLines, discordNotifier } = options;
+  const { urls, authEnabled, customHeaders, liveMode, filters, quiet, verbose, debug, showCodePreview, maxLines, discordNotifier, extractEndpoints, showEndpoints, maxEndpointsPerDomain, maxEndpointFilesPerDomain } = options;
   
   let browser;
   const scanStartTime = Date.now();
@@ -144,7 +145,10 @@ export default async function runCrawler(options) {
       newCodeSections: 0,
       urlsProcessed: 0,
       urlsFailed: 0,
-      errorDetails: []
+      errorDetails: [],
+      totalEndpoints: 0,
+      newEndpoints: 0,
+      endpointFiles: 0
     };
     
     // Process each URL
@@ -444,6 +448,60 @@ export default async function runCrawler(options) {
                   urlResults.unchanged++;
                   statusMessages.unchanged.push(respUrl);
                 }
+                
+                // Extract endpoints if enabled
+                if (extractEndpoints) {
+                  try {
+                    const content = buffer.toString();
+                    const extractedEndpoints = endpointExtractor.extractEndpoints(content, respUrl);
+                    
+                    if (extractedEndpoints.length > 0) {
+                      const endpointResult = saveEndpoints(domain, respUrl, extractedEndpoints, { 
+                        quiet,
+                        debug,
+                        maxEndpointsPerDomain: maxEndpointsPerDomain || 1000,
+                        maxFilesPerDomain: maxEndpointFilesPerDomain || 100
+                      });
+                      
+                      if (endpointResult.saved) {
+                        // Add endpoint info to status messages
+                        statusMessages.endpoints = statusMessages.endpoints || [];
+                        statusMessages.endpoints.push({
+                          url: respUrl,
+                          count: endpointResult.count,
+                          newCount: endpointResult.newCount,
+                          summary: endpointResult.summary
+                        });
+                        
+                        // Update global results counters
+                        results.totalEndpoints += endpointResult.count;
+                        results.newEndpoints += endpointResult.newCount;
+                        results.endpointFiles++;
+                        
+                        // Add to batch for Discord notification (only summary at end)
+                        if (discordNotifier && discordNotifier.enabled && endpointResult.newCount > 0) {
+                          discordNotifier.addToBatch('endpoints_found', {
+                            url: respUrl,
+                            domain: domain,
+                            totalEndpoints: endpointResult.count,
+                            newEndpoints: endpointResult.newCount,
+                            highConfidence: endpointResult.summary.high_confidence,
+                            mediumConfidence: endpointResult.summary.medium_confidence,
+                            lowConfidence: endpointResult.summary.low_confidence
+                          });
+                        }
+                        
+                        if (debug) {
+                          log.debug(`${respUrl} → Extracted ${endpointResult.count} endpoints (${endpointResult.newCount} new)`);
+                        }
+                      }
+                    }
+                  } catch (endpointError) {
+                    if (!quiet) {
+                      log.warning(`Endpoint extraction failed for ${respUrl}: ${endpointError.message}`);
+                    }
+                  }
+                }
               } catch (fileError) {
                 const errorMsg = `File processing error: ${fileError.message}`;
                 statusMessages.errors.push({ url: respUrl, message: errorMsg });
@@ -549,6 +607,47 @@ export default async function runCrawler(options) {
               log.muted(`${statusMessages.filtered.length} files filtered`);
             }
             
+            // Show endpoint extraction results if enabled
+            if (extractEndpoints && statusMessages.endpoints && statusMessages.endpoints.length > 0) {
+              log.separator();
+              log.header('Endpoint Extraction Summary');
+              
+              let totalEndpoints = 0;
+              let totalNewEndpoints = 0;
+              let totalHighConfidence = 0;
+              let totalMediumConfidence = 0;
+              let totalLowConfidence = 0;
+              
+              statusMessages.endpoints.forEach(endpointInfo => {
+                totalEndpoints += endpointInfo.count;
+                totalNewEndpoints += endpointInfo.newCount;
+                totalHighConfidence += endpointInfo.summary.high_confidence;
+                totalMediumConfidence += endpointInfo.summary.medium_confidence;
+                totalLowConfidence += endpointInfo.summary.low_confidence;
+                
+                if (showEndpoints) {
+                  log.info(`File: ${formatUrl(endpointInfo.url)}`);
+                  log.muted(`  Total endpoints: ${endpointInfo.count}`);
+                  log.muted(`  New endpoints: ${endpointInfo.newCount}`);
+                  log.muted(`  High confidence: ${endpointInfo.summary.high_confidence}`);
+                  log.muted(`  Medium confidence: ${endpointInfo.summary.medium_confidence}`);
+                  log.muted(`  Low confidence: ${endpointInfo.summary.low_confidence}`);
+                  log.separator();
+                }
+              });
+              
+              if (!showEndpoints) {
+                log.info(`Total endpoints extracted: ${totalEndpoints}`);
+                log.info(`New endpoints discovered: ${totalNewEndpoints}`);
+                log.muted(`Confidence distribution:`);
+                log.muted(`  High: ${totalHighConfidence}`);
+                log.muted(`  Medium: ${totalMediumConfidence}`);
+                log.muted(`  Low: ${totalLowConfidence}`);
+                log.separator();
+                log.muted(`Generate detailed report: node cli.js --generate-endpoint-report ${domain}`);
+              }
+            }
+            
             // Show change summaries ONLY for modified files (not new files)
             const modifiedSummaries = statusMessages.changeSummaries.filter(summary => !summary.diffInfo.isNewFile);
             if (modifiedSummaries.length > 0) {
@@ -647,6 +746,13 @@ export default async function runCrawler(options) {
       'Duration': formatDuration(scanDuration),
       'Completed': formatTime()
     };
+    
+    // Add endpoint data if extraction was enabled
+    if (extractEndpoints && results.totalEndpoints > 0) {
+      summaryData['Files with Endpoints'] = results.endpointFiles;
+      summaryData['Total Endpoints'] = results.totalEndpoints;
+      summaryData['New Endpoints'] = results.newEndpoints;
+    }
 
     summary.create('Scan Results', summaryData);
 
@@ -692,8 +798,8 @@ export default async function runCrawler(options) {
             
             // Display key findings
             if (similarityReport.summary.clusters > 0) {
-              log.info(`🔍 Found ${similarityReport.summary.clusters} groups of similar files in ${domain}`);
-              log.muted(`These likely represent renamed/moved files with similar functionality`);
+              log.info(`File clusters identified: ${similarityReport.summary.clusters} groups in ${domain}`);
+              log.muted(`Analysis suggests these may be renamed or relocated files`);
             }
             
             // Clean up old fingerprints
@@ -701,6 +807,32 @@ export default async function runCrawler(options) {
           }
         } catch (error) {
           log.warning(`Failed to generate similarity report for ${domain}: ${error.message}`);
+        }
+      }
+    }
+    
+    // Generate endpoint reports if extraction was enabled
+    if (extractEndpoints && results.totalEndpoints > 0 && !quiet) {
+      log.separator();
+      log.info('Generating endpoint reports...');
+      
+      const domains = new Set();
+      urls.forEach(url => domains.add(new URL(url).hostname));
+      
+      for (const domain of domains) {
+        try {
+          const endpointReport = generateEndpointReport(domain);
+                  if (endpointReport) {
+          log.muted(`Endpoint Report: ${endpointReport.reportPath}`);
+          
+          // Display key findings
+          if (endpointReport.totalEndpoints > 0) {
+            log.info(`Endpoints discovered: ${endpointReport.totalEndpoints} in ${domain}`);
+            log.muted(`Confidence breakdown - High: ${endpointReport.byConfidence.HIGH?.length || 0}, Medium: ${endpointReport.byConfidence.MEDIUM?.length || 0}, Low: ${endpointReport.byConfidence.LOW?.length || 0}`);
+          }
+        }
+        } catch (error) {
+          log.warning(`Failed to generate endpoint report for ${domain}: ${error.message}`);
         }
       }
     }
