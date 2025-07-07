@@ -5,6 +5,7 @@ A comprehensive web security scanner that monitors JavaScript files for changes 
 ## Features
 
 - **JavaScript File Monitoring**: Automatically detects and tracks all JavaScript files
+- **Endpoint Extraction**: Comprehensive extraction of API endpoints and URLs from JavaScript files
 - **Code Similarity Analysis**: Identifies renamed/moved files with similar functionality
 - **Change Detection**: Tracks file modifications with detailed diff analysis
 - **Live Monitoring**: Continuous monitoring with customizable intervals
@@ -88,6 +89,22 @@ node cli.js --analyze-all-domains
 
 # Use custom similarity threshold (0.0-1.0)
 node cli.js --analyze-similarity example.com --similarity-threshold 0.8
+```
+
+### Endpoint Extraction
+
+```bash
+# Extract endpoints from JavaScript files
+node cli.js --url https://example.com --extract-endpoints
+
+# Extract endpoints with detailed output
+node cli.js --url https://example.com --extract-endpoints --show-endpoints
+
+# Generate endpoint report for a specific domain
+node cli.js --generate-endpoint-report example.com
+
+# Generate endpoint reports for all domains
+node cli.js --generate-all-endpoint-reports
 ```
 
 ### Authentication
@@ -176,6 +193,59 @@ Example similarity report:
 - `https://example.com/js/vendor.new.js`
 ```
 
+## Endpoint Extraction
+
+The endpoint extraction feature provides comprehensive detection of API endpoints, URLs, and routes from JavaScript files with high accuracy. This is particularly useful for security research, API discovery, and reconnaissance.
+
+### Detection Methods
+
+The system uses three complementary extraction methods:
+
+1. **Regex Pattern Matching**: Identifies common URL patterns and API endpoints
+2. **AST (Abstract Syntax Tree) Analysis**: Parses JavaScript code for accurate endpoint extraction
+3. **Line-by-line Context Analysis**: Analyzes code context for additional endpoint discovery
+
+### Confidence Levels
+
+Endpoints are classified into three confidence levels:
+
+- **High Confidence**: API calls, fetch requests, axios calls, and clear endpoint patterns
+- **Medium Confidence**: URL patterns, router definitions, and configuration endpoints
+- **Low Confidence**: File paths and less certain patterns
+
+### Endpoint Categories
+
+The system categorizes endpoints by type:
+
+- **API Endpoints**: `/api/*`, `/v1/*`, `/rest/*`, `/graphql`
+- **Authentication**: `/auth/*`, `/login`, `/signup`, `/oauth`
+- **Admin Routes**: `/admin/*`, `/dashboard/*`, `/config`
+- **Data Endpoints**: `/data/*`, `/upload/*`, `/download/*`
+- **WebSocket URLs**: `ws://`, `wss://`
+- **Full URLs**: `https://`, `http://`
+
+### Understanding Endpoint Reports
+
+Example endpoint report structure:
+
+```markdown
+# Endpoint Report for example.com
+
+## Summary
+- **High Confidence**: 15 endpoints
+- **Medium Confidence**: 23 endpoints
+- **Low Confidence**: 8 endpoints
+
+## High Confidence Endpoints
+- `GET` **/api/users** (from `app.js`)
+- `POST` **/api/auth/login** (from `auth.js`)
+- `GET` **/api/v1/posts** (from `posts.js`)
+
+## Medium Confidence Endpoints
+- `GET` **/admin/dashboard** (from `admin.js`)
+- `UNKNOWN` **/config/settings** (from `config.js`)
+```
+
 ## Output Structure
 
 ```
@@ -185,6 +255,11 @@ data/
 │   ├── beautified/         # Beautified versions
 │   ├── diffs/              # Change diffs
 │   ├── new-code/           # New code sections
+│   ├── endpoints/          # Extracted endpoints
+│   │   ├── all-endpoints.json      # All discovered endpoints
+│   │   ├── summary.json            # Endpoint summary
+│   │   ├── endpoint-report.md      # Human-readable report
+│   │   └── filename_timestamp.json # Per-file endpoints
 │   ├── hashes.json         # File hashes
 │   ├── fingerprints.json   # Code fingerprints
 │   ├── file-relationships.json  # Similarity relationships
@@ -217,6 +292,14 @@ data/
 | `--analyze-similarity <domain>` | Analyze similarity for domain |
 | `--analyze-all-domains` | Analyze all domains |
 | `--similarity-threshold <number>` | Similarity threshold (default: 0.7) |
+| `--extract-endpoints` | Enable endpoint extraction |
+| `--show-endpoints` | Show extracted endpoints in output |
+| `--generate-endpoint-report <domain>` | Generate endpoint report for domain |
+| `--generate-all-endpoint-reports` | Generate endpoint reports for all domains |
+| `--cleanup-endpoints` | Clean up excessive endpoint data |
+| `--endpoint-storage-stats` | Show endpoint storage statistics |
+| `--max-endpoints <number>` | Max endpoints per domain (default: 1000) |
+| `--max-endpoint-files <number>` | Max endpoint files per domain (default: 100) |
 | `--cleanup-diffs` | Clean up old diff files |
 
 ## Examples
@@ -236,14 +319,46 @@ node cli.js --urls production-sites.txt \
 ### Security Research Workflow
 
 ```bash
-# 1. Initial scan
-node cli.js --url https://target.com --verbose
+# 1. Initial scan with endpoint extraction
+node cli.js --url https://target.com --extract-endpoints --show-endpoints --verbose
 
 # 2. Analyze similarities to understand file structure
 node cli.js --analyze-similarity target.com
 
-# 3. Set up monitoring for changes
-node cli.js --url https://target.com --live --interval 300
+# 3. Generate comprehensive endpoint report
+node cli.js --generate-endpoint-report target.com
+
+# 4. Set up monitoring for changes and new endpoints
+node cli.js --url https://target.com --live --interval 300 --extract-endpoints
+```
+
+### Endpoint Discovery Workflow
+
+```bash
+# 1. Extract endpoints from multiple targets
+node cli.js --urls targets.txt --extract-endpoints --show-endpoints
+
+# 2. Generate reports for all discovered domains
+node cli.js --generate-all-endpoint-reports
+
+# 3. Monitor for new endpoints in live mode
+node cli.js --urls targets.txt --live --interval 600 --extract-endpoints
+```
+
+### Storage Management
+
+```bash
+# Check endpoint storage usage
+node cli.js --endpoint-storage-stats
+
+# Clean up excessive endpoint data
+node cli.js --cleanup-endpoints
+
+# Set custom limits (prevent large storage)
+node cli.js --url https://target.com --extract-endpoints --max-endpoints 500 --max-endpoint-files 50
+
+# Monitor with storage limits
+node cli.js --urls targets.txt --live --extract-endpoints --max-endpoints 1000
 ```
 
 ### Batch Analysis
