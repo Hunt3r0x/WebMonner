@@ -12,7 +12,8 @@ export class DiscordNotifier {
     this.batchedChanges = {
       newFiles: [],
       changedFiles: [],
-      errors: []
+      errors: [],
+      endpointsFound: []
     };
   }
 
@@ -30,6 +31,9 @@ export class DiscordNotifier {
       case 'error':
         this.batchedChanges.errors.push(data);
         break;
+      case 'endpoints_found':
+        this.batchedChanges.endpointsFound.push(data);
+        break;
     }
   }
 
@@ -37,17 +41,18 @@ export class DiscordNotifier {
   async sendBatchedSummary() {
     if (!this.enabled) return;
 
-    const { newFiles, changedFiles, errors } = this.batchedChanges;
+    const { newFiles, changedFiles, errors, endpointsFound } = this.batchedChanges;
     const totalChanges = newFiles.length + changedFiles.length;
+    const totalEndpoints = endpointsFound.reduce((sum, ep) => sum + ep.newEndpoints, 0);
 
-    // Only send if there are changes
-    if (totalChanges === 0 && errors.length === 0) {
+    // Only send if there are changes, endpoints, or errors
+    if (totalChanges === 0 && errors.length === 0 && totalEndpoints === 0) {
       this.clearBatch();
       return;
     }
 
     try {
-      const embed = this.createBatchedSummaryEmbed(newFiles, changedFiles, errors);
+      const embed = this.createBatchedSummaryEmbed(newFiles, changedFiles, errors, endpointsFound);
       const payload = {
         username: 'WebMonner',
         embeds: [embed]
@@ -62,7 +67,7 @@ export class DiscordNotifier {
       });
 
       if (response.ok) {
-        console.log(`Discord summary sent: ${totalChanges} changes, ${errors.length} errors`);
+        console.log(`Discord summary sent: ${totalChanges} changes, ${totalEndpoints} endpoints, ${errors.length} errors`);
       } else if (response.status === 429) {
         // Handle rate limiting
         const retryAfter = response.headers.get('Retry-After') || 60;
@@ -80,16 +85,21 @@ export class DiscordNotifier {
   }
 
   // New: Create batched summary embed
-  createBatchedSummaryEmbed(newFiles, changedFiles, errors) {
+  createBatchedSummaryEmbed(newFiles, changedFiles, errors, endpointsFound = []) {
     const timestamp = new Date().toISOString();
     const totalChanges = newFiles.length + changedFiles.length;
+    const totalEndpoints = endpointsFound.reduce((sum, ep) => sum + ep.newEndpoints, 0);
     
     let title = '';
     let color = 0x808080; // Gray default
     
-    if (totalChanges > 0) {
-      title = `📊 Scan Summary - ${totalChanges} Change${totalChanges > 1 ? 's' : ''} Detected`;
-      color = 0x00ff00; // Green for changes
+    if (totalChanges > 0 || totalEndpoints > 0) {
+      const parts = [];
+      if (totalChanges > 0) parts.push(`${totalChanges} Change${totalChanges > 1 ? 's' : ''}`);
+      if (totalEndpoints > 0) parts.push(`${totalEndpoints} Endpoint${totalEndpoints > 1 ? 's' : ''}`);
+      
+      title = `📊 Scan Summary - ${parts.join(', ')} Detected`;
+      color = 0x00ff00; // Green for changes/endpoints
     } else if (errors.length > 0) {
       title = `❌ Scan Summary - ${errors.length} Error${errors.length > 1 ? 's' : ''} Occurred`;
       color = 0xff0000; // Red for errors only
@@ -130,6 +140,30 @@ export class DiscordNotifier {
       });
     }
 
+    // Add endpoints summary
+    if (endpointsFound.length > 0) {
+      const endpointList = endpointsFound.slice(0, 8).map(epData => {
+        const fileName = epData.url.split('/').pop() || 'unknown.js';
+        const shortFileName = fileName.length > 25 ? fileName.substring(0, 22) + '...' : fileName;
+        const confidence = `H:${epData.highConfidence} M:${epData.mediumConfidence} L:${epData.lowConfidence}`;
+        return `• **${shortFileName}** - ${epData.newEndpoints} new (${confidence})`;
+      }).join('\n');
+      
+      const moreEndpoints = endpointsFound.length > 8 ? `\n+ ${endpointsFound.length - 8} more files with endpoints...` : '';
+      
+      // Calculate totals for the field name
+      const totalHighConfidence = endpointsFound.reduce((sum, ep) => sum + ep.highConfidence, 0);
+      const totalMediumConfidence = endpointsFound.reduce((sum, ep) => sum + ep.mediumConfidence, 0);
+      const totalLowConfidence = endpointsFound.reduce((sum, ep) => sum + ep.lowConfidence, 0);
+      
+      fields.push({
+        name: `🎯 API Endpoints Discovered (${totalEndpoints} total)`,
+        value: endpointList + moreEndpoints + 
+               `\n\n**Confidence Breakdown:** H:${totalHighConfidence} M:${totalMediumConfidence} L:${totalLowConfidence}`,
+        inline: false
+      });
+    }
+
     // Add errors summary
     if (errors.length > 0) {
       const errorList = errors.slice(0, 3).map(error => {
@@ -147,25 +181,50 @@ export class DiscordNotifier {
     }
 
     // Add summary stats
-    if (totalChanges > 0) {
+    if (totalChanges > 0 || totalEndpoints > 0) {
       const totalLines = [...newFiles, ...changedFiles].reduce((sum, file) => {
         return sum + (file.addedLines || file.lines || 0);
       }, 0);
       
-      const domains = new Set([...newFiles, ...changedFiles].map(file => file.domain));
+      const allData = [...newFiles, ...changedFiles, ...endpointsFound];
+      const domains = new Set(allData.map(item => item.domain));
+      
+      let statsValue = `**Scan Time:** ${timestamp.split('T')[1].split('.')[0]}\n**Domains Affected:** ${domains.size}`;
+      
+      if (totalLines > 0) {
+        statsValue += `\n**Total Lines Added:** ${totalLines}`;
+      }
+      
+      if (totalEndpoints > 0) {
+        const totalHighConfidence = endpointsFound.reduce((sum, ep) => sum + ep.highConfidence, 0);
+        const totalMediumConfidence = endpointsFound.reduce((sum, ep) => sum + ep.mediumConfidence, 0);
+        const totalLowConfidence = endpointsFound.reduce((sum, ep) => sum + ep.lowConfidence, 0);
+        
+        statsValue += `\n**High Confidence:** ${totalHighConfidence}`;
+        statsValue += `\n**Medium Confidence:** ${totalMediumConfidence}`;
+        statsValue += `\n**Low Confidence:** ${totalLowConfidence}`;
+      }
       
       fields.push({
         name: '📈 Statistics',
-        value: `**Total Lines Added:** ${totalLines}\n**Domains Affected:** ${domains.size}\n**Scan Time:** ${timestamp.split('T')[1].split('.')[0]}`,
+        value: statsValue,
         inline: true
       });
     }
 
+    let description = '';
+    if (totalChanges > 0 || totalEndpoints > 0) {
+      const parts = [];
+      if (totalChanges > 0) parts.push('JavaScript files have been updated');
+      if (totalEndpoints > 0) parts.push('new API endpoints discovered');
+      description = `${parts.join(' and ')}. Check the details below.`;
+    } else {
+      description = 'Scan completed with errors. No changes or endpoints detected.';
+    }
+
     return {
       title,
-      description: totalChanges > 0 ? 
-        `JavaScript files have been updated. Check the details below.` : 
-        `Scan completed with errors. No file changes detected.`,
+      description,
       color,
       fields,
       footer: { text: 'WebMonner Summary' },
@@ -178,7 +237,8 @@ export class DiscordNotifier {
     this.batchedChanges = {
       newFiles: [],
       changedFiles: [],
-      errors: []
+      errors: [],
+      endpointsFound: []
     };
   }
 
@@ -186,8 +246,8 @@ export class DiscordNotifier {
   async sendNotification(type, data) {
     if (!this.enabled) return;
 
-    // For file changes and errors, add to batch instead of sending immediately
-    if (type === 'new_file' || type === 'file_changed' || type === 'error') {
+    // For file changes, errors, and endpoints, add to batch instead of sending immediately
+    if (type === 'new_file' || type === 'file_changed' || type === 'error' || type === 'endpoints_found') {
       this.addToBatch(type, data);
       return;
     }
@@ -491,6 +551,8 @@ export class DiscordNotifier {
       console.error(`Discord code preview failed: ${error.message}`);
     }
   }
+
+
 }
 
 // Helper function to extract domain from URL
